@@ -230,7 +230,6 @@
     ideaFor = c.ideaId ?? null;
     $('topic').value = c.topic ?? '';
     if (c.platform) $('platform').value = c.platform;
-    $('topic').focus();
   }
 
   CS.onChange(() => { takeCurrent(); if (cur) { const fresh = scripts().find((s) => s.id === cur.id); if (!fresh) { cur = null; renderEditor(); } } renderList(); });
