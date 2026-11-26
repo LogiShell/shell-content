@@ -8,8 +8,8 @@
 <link rel="stylesheet" href="common.css">
 <style>
   main { max-width: 1080px; }
-  .studio { display: grid; grid-template-columns: minmax(220px, 360px) 1fr; gap: 20px; align-items: start; }
-  @media (max-width: 720px) { .studio { grid-template-columns: 1fr; } }
+  .studio { display: grid; grid-template-columns: minmax(220px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 720px) { .studio { grid-template-columns: minmax(0, 1fr); } }
   .stage { position: sticky; top: 16px; }
   canvas { width: 100%; height: auto; border-radius: 14px; display: block; background: var(--bg-2); box-shadow: var(--glass-shadow); }
   @media (max-width: 720px) { .stage { position: static; max-width: 320px; margin: 0 auto; } }
@@ -513,13 +513,14 @@
       const ext = mime.includes('mp4') ? 'mp4' : 'webm';
       const name = fileName(ext);
       const url = URL.createObjectURL(blob);
-      const link = el('a', { href: url, download: name, style: 'display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;text-decoration:none;background:var(--accent);color:var(--accent-ink);font-weight:600' }, 'Скачать ещё раз');
+      const link = el('a', { href: url, download: name, style: 'display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;text-decoration:none;background:var(--accent);color:var(--accent-ink);font-weight:600' }, 'Скачать ' + ext.toUpperCase());
       const note = ext === 'webm' ? 'Файл WebM: TikTok и YouTube его принимают; для Instagram сохраните в Chrome или Safari, там будет MP4.' : 'Файл MP4, подходит для Reels, TikTok и Shorts.';
       $('done').replaceChildren(el('section', { class: 'surface card' }, el('h2', { text: 'Готово: ' + name }),
         el('video', { src: url, controls: true, playsInline: true, style: 'width:100%;max-width:260px;border-radius:10px;display:block;margin:0 0 10px' }),
         el('div', { class: 'row' }, link, el('button', { class: 'quiet', type: 'button', onclick: () => CS.copy([script.caption, (script.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n')) }, 'Скопировать подпись')),
         el('p', { class: 'hint', text: `${(blob.size / 1048576).toFixed(1)} МБ. ${note}` })));
-      link.click();
+      link.focus();
+      $('done').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       markVideo();
     };
     rec.start(250);

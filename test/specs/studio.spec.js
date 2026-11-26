@@ -83,10 +83,12 @@ test('4. Видео records a real vertical file of the right length', async ({ 
   expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1080, 1920]);
   expect(png.length).toBeGreaterThan(10 * 1024);
 
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: (ANSWER_SECONDS + 30) * 1000 }),
-    video.getByRole('button', { name: 'Сохранить видео' }).click(),
-  ]);
+  // Recording runs in real time; when it is done the page offers the file behind a button (a click, so the browser
+  // never holds it as an unasked download).
+  await video.getByRole('button', { name: 'Сохранить видео' }).click();
+  const save = video.getByRole('link', { name: /^Скачать (MP4|WEBM)$/ });
+  await expect(save).toBeVisible({ timeout: (ANSWER_SECONDS + 30) * 1000 });
+  const [download] = await Promise.all([page.waitForEvent('download'), save.click()]);
   const file = info.outputPath(download.suggestedFilename());
   await download.saveAs(file);
   const bytes = await readFile(file);
