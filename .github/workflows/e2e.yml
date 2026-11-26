@@ -1,0 +1,42 @@
+name: e2e
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: test/package-lock.json
+      - name: Install test dependencies
+        run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Download the LogiShell shell skill (preview.mjs)
+        run: |
+          mkdir -p "$RUNNER_TEMP/skill"
+          curl -fsSL https://shell.lsh.dev/skill.tgz | tar -xz -C "$RUNNER_TEMP/skill"
+          echo "LSH_SKILL_DIR=$RUNNER_TEMP/skill/logishell-shell" >> "$GITHUB_ENV"
+      - name: Run the end to end tests
+        run: npx playwright test
+      - name: Keep traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: /tmp/content-studio-e2e
+          retention-days: 7

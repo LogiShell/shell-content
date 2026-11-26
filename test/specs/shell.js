@@ -78,7 +78,9 @@ export async function writeScript(page, topic) {
   const f = await tool(page, 'script');
   await f.locator('#topic').fill(topic);
   await f.getByRole('button', { name: 'Написать с Claude' }).click();
-  await expect(f.locator('#out')).toContainText('Claude отсюда пока не подключён');
+  // Claude is not connected: the panel offers LogiShell sign-in first (not pressed here) and the manual way folded.
+  await expect(f.locator('#out').getByRole('button', { name: 'Войти через LogiShell' })).toBeVisible();
+  await f.locator('#out summary', { hasText: 'Или вручную' }).click();
   await f.getByLabel('Ответ Claude').fill('Вот сценарий:\n```json\n' + JSON.stringify(ANSWER) + '\n```');
   await f.getByRole('button', { name: 'Готово' }).click();
   await expect(f.locator('#editor')).toBeVisible();
