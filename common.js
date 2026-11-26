@@ -92,8 +92,15 @@
   async function ask({ system, prompt, maxTokens = 3000 }) {
     const r = await rails();
     if (r.logishell && r.signedIn) {
-      const out = await window.logishell.ai.complete({ system, messages: [{ role: 'user', content: prompt }], maxTokens });
-      return String(out?.text ?? '');
+      try {
+        const out = await window.logishell.ai.complete({ system, messages: [{ role: 'user', content: prompt }], maxTokens });
+        return String(out?.text ?? '');
+      } catch (e) {
+        const m = String(e?.message ?? '');
+        if (/sign in/i.test(m)) { if (!read('settings', {}).apiKey) throw new NoRail('signed out'); }
+        else if (/limit|busy|too many/i.test(m)) throw new Error('Лимит Claude через LogiShell на сегодня исчерпан или сервис занят. Попробуйте позже или подключите свой ключ во вкладке «Данные».');
+        else throw new Error('Claude через LogiShell сейчас не ответил. Попробуйте ещё раз через минуту.');
+      }
     }
     const key = read('settings', {}).apiKey;
     if (key) return viaKey(key, system, prompt, maxTokens);

@@ -87,7 +87,7 @@
     }
     box.replaceChildren(el('p', { class: 'note', text: r.key
       ? 'Claude работает через ваш ключ Anthropic.'
-      : 'Вход через LogiShell появится здесь, как только рамка shell его поддержит. Пока: свой ключ Anthropic ниже или ручной режим (скопировать запрос в чат с Claude).' }));
+      : 'Вход через LogiShell работает, когда shell открыт на shell.lsh.dev или в приложении LogiShell. Здесь можно подключить свой ключ Anthropic ниже или пользоваться ручным режимом (скопировать запрос в чат с Claude).' }));
     if (!r.key) $('byok').open = true;
   }
 
