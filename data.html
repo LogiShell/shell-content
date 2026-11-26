@@ -42,6 +42,11 @@
   </section>
 
   <section class="surface card">
+    <h2>Что заходит</h2>
+    <div id="insights"></div>
+  </section>
+
+  <section class="surface card">
     <h2>Сохранить и перенести</h2>
     <p class="hint" style="margin:0 0 10px">Файл с идеями, сценариями и планом. Ключ Claude в файл не попадает.</p>
     <div class="row">
@@ -120,6 +125,41 @@
     $('stats').replaceChildren(...s.map(([t, n]) => el('div', { class: 'stat' }, el('b', { text: String(n) }), el('span', { text: t }))));
   }
 
+  const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' млн' : n >= 1e4 ? Math.round(n / 1e3) + ' тыс' : String(Math.round(n)));
+  function renderInsights() {
+    const plan = read('plan', []).filter((p) => p.status === 'posted');
+    const scripts = read('scripts', []);
+    const withViews = plan.filter((p) => Number(p.results?.views) > 0);
+    const box = $('insights');
+    if (!withViews.length) {
+      box.replaceChildren(el('p', { class: 'empty', style: 'margin:0', text: plan.length
+        ? 'Впишите просмотры и лайки у вышедших постов во вкладке «План» (раздел «Вышло»). Здесь появится, какие ролики, площадки и подачи работают лучше.'
+        : 'Когда отметите первые посты как вышедшие и впишете их просмотры, здесь появится, что заходит лучше.' }));
+      return;
+    }
+    const er = (p) => { const r = p.results; return ((Number(r.likes) || 0) + 2 * (Number(r.saves) || 0) + (Number(r.comments) || 0)) / Math.max(1, Number(r.views)); };
+    const top = withViews.slice().sort((a, b) => b.results.views - a.results.views).slice(0, 5);
+    const group = (keyOf) => {
+      const m = new Map();
+      for (const p of withViews) { const k = keyOf(p); if (!k) continue; const g = m.get(k) ?? { n: 0, views: 0, er: 0 }; g.n++; g.views += Number(p.results.views); g.er += er(p); m.set(k, g); }
+      return [...m].map(([k, g]) => ({ k, n: g.n, avg: g.views / g.n, er: g.er / g.n })).sort((a, b) => b.avg - a.avg);
+    };
+    const NAMES = { title: 'Крупный текст', number: 'Цифра', list: 'Список', quote: 'Цитата', compare: 'Сравнение' };
+    const byPlatform = group((p) => p.platform);
+    const byLayout = group((p) => { const s = scripts.find((x) => x.id === p.scriptId); if (!s) return null; const c = {}; for (const sc of s.scenes) c[sc.layout || 'title'] = (c[sc.layout || 'title'] ?? 0) + 1; return NAMES[Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0]]; });
+    const table = (title, rows) => rows.length ? el('div', { style: 'margin-top:12px' }, el('div', { class: 'hint', text: title }),
+      el('ul', { class: 'list' }, rows.map((r) => el('li', {}, el('div', { class: 'body', text: r.k }), el('span', { class: 'mono', text: `${fmt(r.avg)} просм. в среднем · вовлечённость ${(r.er * 100).toFixed(1)}% · постов ${r.n}` }))))) : null;
+    const total = withViews.reduce((a, p) => a + Number(p.results.views), 0);
+    box.replaceChildren(...[
+      el('p', { style: 'margin:0', text: `Всего ${fmt(total)} просмотров у ${withViews.length} постов, в среднем ${fmt(total / withViews.length)}.` }),
+      el('div', { style: 'margin-top:12px' }, el('div', { class: 'hint', text: 'Лучшие по просмотрам' }),
+        el('ul', { class: 'list' }, top.map((p) => el('li', {}, el('div', { class: 'body' }, el('div', { text: p.title }), el('div', { class: 'hint', text: `${p.platform} · ${CS.fmtDate(p.date)}` })),
+          el('span', { class: 'mono', text: `${fmt(p.results.views)} · ♥ ${fmt(Number(p.results.likes) || 0)} · ⤓ ${fmt(Number(p.results.saves) || 0)}` }))))),
+      table('Площадки', byPlatform),
+      table('Подача, которой больше всего в ролике', byLayout),
+      withViews.length >= 3 ? el('p', { class: 'hint', text: 'Вовлечённость: (лайки + 2 × сохранения + комментарии) / просмотры. Сохранения весят больше: алгоритмы их любят.' }) : null].filter(Boolean));
+  }
+
   function download(name, text, type) {
     const a = el('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name });
     document.body.append(a); a.click(); a.remove();
@@ -133,7 +173,7 @@
     const plan = read('plan', []);
     if (!plan.length) { toast('План пуст'); return; }
     const q = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
-    const rows = [['Дата', 'Площадка', 'Что', 'Статус', 'Подпись'], ...plan.map((p) => [p.date, p.platform, p.title, p.status === 'posted' ? 'Вышло' : 'В плане', p.caption])];
+    const rows = [['Дата', 'Площадка', 'Что', 'Статус', 'Просмотры', 'Лайки', 'Сохранения', 'Комментарии', 'Ссылка', 'Подпись'], ...plan.map((p) => [p.date, p.platform, p.title, p.status === 'posted' ? 'Вышло' : 'В плане', p.results?.views ?? '', p.results?.likes ?? '', p.results?.saves ?? '', p.results?.comments ?? '', p.results?.url ?? '', p.caption])];
     download(`plan-${CS.today()}.csv`, '﻿' + rows.map((r) => r.map(q).join(',')).join('\n'), 'text/csv');
   };
   $('import-label').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('import').click(); } };
@@ -155,7 +195,7 @@
       } else if (mode === 'replace' || read(k, null) == null) write(k, incoming);
     }
     $('io-out').replaceChildren(el('p', { class: 'note good', text: mode === 'merge' ? 'Данные объединены.' : 'Данные заменены содержимым файла.' }));
-    renderStats();
+    renderStats(); renderInsights();
   };
   $('wipe').onclick = () => {
     if (!confirm('Удалить все идеи, сценарии и план из этого браузера? Отменить нельзя.')) return;
@@ -164,8 +204,8 @@
     renderStats(); toast('Очищено');
   };
 
-  CS.onChange(() => { renderStats(); });
-  renderKey(); renderStats(); renderRail();
+  CS.onChange(() => { renderStats(); renderInsights(); });
+  renderKey(); renderStats(); renderInsights(); renderRail();
 </script>
 </body>
 </html>

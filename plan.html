@@ -77,11 +77,28 @@
       el('div', { class: 'body' },
         el('div', { class: 'title', text: p.title || 'Без названия' }),
         el('div', { style: 'margin-top:2px' }, el('span', { class: 'chip', text: p.platform })),
-        p.caption ? el('div', { class: 'cap', text: p.caption }) : null),
+        p.caption ? el('div', { class: 'cap', text: p.caption }) : null,
+        done ? results(p) : null),
       el('div', { class: 'row' }, date,
         p.caption ? el('button', { class: 'quiet small', type: 'button', onclick: () => copy(p.caption) }, 'Копировать подпись') : null,
         p.scriptId ? el('button', { class: 'quiet small', type: 'button', onclick: () => { write('current', { scriptId: p.scriptId }); open('video'); } }, 'Видео') : null,
         el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Убрать из плана', onclick: () => { if (confirm('Убрать «' + (p.title || 'публикацию') + '» из плана?')) { save(plan().filter((x) => x.id !== p.id)); render(); } } }, '✕')));
+  }
+
+  /** After it is out: the link and how it went, typed by hand from the platform's stats. */
+  function results(p) {
+    const r = p.results ?? {};
+    const num = (key, label) => {
+      const f = el('input', { class: 'field', type: 'number', min: 0, inputmode: 'numeric', style: 'width:110px;height:28px', placeholder: label, 'aria-label': label });
+      if (r[key] != null) f.value = r[key];
+      f.onchange = () => { const v = f.value === '' ? null : Math.max(0, Math.round(Number(f.value) || 0)); update(p.id, { results: { ...(plan().find((x) => x.id === p.id)?.results ?? {}), [key]: v, updated: today() } }); };
+      return f;
+    };
+    const link = el('input', { class: 'field grow', type: 'url', style: 'height:28px', placeholder: 'Ссылка на пост', 'aria-label': 'Ссылка на пост' });
+    link.value = r.url ?? '';
+    link.onchange = () => update(p.id, { results: { ...(plan().find((x) => x.id === p.id)?.results ?? {}), url: link.value.trim() } });
+    return el('div', { class: 'row', style: 'margin-top:8px' }, num('views', 'Просмотры'), num('likes', 'Лайки'), num('saves', 'Сохранения'), num('comments', 'Комменты'), link,
+      r.url && /^https?:\/\//.test(r.url) ? el('a', { href: r.url, target: '_blank', rel: 'noopener', class: 'quiet small', style: 'display:inline-flex;align-items:center;text-decoration:none' }, 'Открыть') : null);
   }
 
   function render() {
