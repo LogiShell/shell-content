@@ -7,24 +7,28 @@
 <link rel="stylesheet" href="lsh://kit/kit.css">
 <link rel="stylesheet" href="common.css">
 <style>
-  main { max-width: 1040px; }
-  .studio { display: grid; grid-template-columns: minmax(220px, 340px) 1fr; gap: 20px; align-items: start; }
+  main { max-width: 1080px; }
+  .studio { display: grid; grid-template-columns: minmax(220px, 360px) 1fr; gap: 20px; align-items: start; }
   @media (max-width: 720px) { .studio { grid-template-columns: 1fr; } }
   .stage { position: sticky; top: 16px; }
-  canvas { width: 100%; aspect-ratio: 9 / 16; border-radius: 14px; display: block; background: var(--bg-2); box-shadow: var(--glass-shadow); }
-  @media (max-width: 720px) { .stage { position: static; max-width: 300px; margin: 0 auto; } }
-  .styles { display: flex; gap: 6px; flex-wrap: wrap; }
+  canvas { width: 100%; height: auto; border-radius: 14px; display: block; background: var(--bg-2); box-shadow: var(--glass-shadow); }
+  @media (max-width: 720px) { .stage { position: static; max-width: 320px; margin: 0 auto; } }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
   .check { display: flex; gap: 8px; align-items: center; margin: 8px 0 0; color: var(--ink-2); }
   progress { width: 100%; accent-color: var(--accent); }
-  .file-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .file-row input[type=file] { max-width: 100%; color: var(--ink-2); font-size: var(--text-sm); }
+  .scene-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .scene-row .what { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+  .scene-row .what small { display: block; color: var(--ink-3); }
+  .file-btn { position: relative; overflow: hidden; display: inline-flex; align-items: center; }
+  .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .scrub { width: 100%; accent-color: var(--accent); margin-top: 8px; }
 </style>
 </head>
 <body>
 <main>
   <p class="eyebrow">Контент-студия</p>
   <h1>Видео</h1>
-  <p class="lead">Собирает вертикальный ролик 1080×1920 из сцен сценария: крупный текст, субтитры, полоса прогресса, ваш фон и музыка. Файл скачивается и сразу идёт в Reels, TikTok или Shorts.</p>
+  <p class="lead">Собирает ролик из сцен сценария. Каждую сцену Claude подаёт по-своему: крупный текст, большая цифра, список, цитата или сравнение. Субтитры загораются по словам, на любую сцену можно поставить своё фото или видео. Файл и обложка скачиваются сразу.</p>
 
   <div id="none" class="surface card" hidden>
     <p class="empty" style="margin:0 0 10px">Сначала нужен сценарий. Напишите его во вкладке «Сценарий», там же кнопка «Собрать видео».</p>
@@ -34,9 +38,11 @@
   <div class="studio" id="studio" hidden>
     <div class="stage">
       <canvas id="cv" width="1080" height="1920" aria-label="Предпросмотр ролика"></canvas>
-      <div class="row" style="margin-top:10px">
+      <input type="range" class="scrub" id="scrub" min="0" max="1000" value="40" aria-label="Перемотка">
+      <div class="row" style="margin-top:8px">
         <button class="quiet" type="button" id="play">▶ Смотреть</button>
         <button class="primary" type="button" id="rec">Сохранить видео</button>
+        <button class="quiet" type="button" id="cover">Обложка</button>
       </div>
       <div id="rec-state" hidden style="margin-top:8px">
         <progress id="rec-bar" max="1" value="0"></progress>
@@ -49,27 +55,31 @@
       <section class="surface card">
         <label class="l" for="pick">Сценарий</label>
         <select class="field" id="pick"></select>
+        <label class="l">Формат</label>
+        <div class="pills" id="formats" role="radiogroup" aria-label="Формат"></div>
         <label class="l">Стиль</label>
-        <div class="styles" id="styles" role="radiogroup" aria-label="Стиль"></div>
+        <div class="pills" id="styles" role="radiogroup" aria-label="Стиль"></div>
         <label class="l" for="handle">Подпись внизу (ник или канал)</label>
         <input class="field" id="handle" placeholder="@my_channel" autocomplete="off">
-        <label class="check"><input type="checkbox" id="subs" checked> Субтитры из закадра</label>
+        <label class="check"><input type="checkbox" id="subs" checked> Субтитры по словам из закадра</label>
         <label class="check"><input type="checkbox" id="hookcard" checked> Зацепка отдельным первым кадром</label>
       </section>
 
       <section class="surface card">
-        <h2>Фон и музыка</h2>
-        <label class="l" for="bg">Фото или видео на фон (необязательно)</label>
-        <div class="file-row"><input type="file" id="bg" accept="image/*,video/*"><button class="quiet small" type="button" id="bg-clear" hidden>Убрать</button></div>
-        <label class="l" for="music">Музыка (необязательно)</label>
-        <div class="file-row"><input type="file" id="music" accept="audio/*"><button class="quiet small" type="button" id="music-clear" hidden>Убрать</button></div>
-        <p class="hint">Файлы не уходят никуда: ролик собирается прямо в вашем браузере. Фон и музыку нужно выбрать заново после перезагрузки.</p>
-      </section>
-
-      <section class="surface card">
-        <h2>Сцены</h2>
-        <ol id="scene-list" class="hint" style="padding-left:18px;margin:0"></ol>
-        <div class="row" style="margin-top:10px"><button class="quiet small" type="button" id="edit-script">Править в «Сценарии»</button></div>
+        <h2>Сцены и фон</h2>
+        <p class="hint" style="margin:0 0 6px">Фото или видео на сцену необязательно. Без него фон рисуется в цветах стиля. Файлы никуда не уходят, всё собирается в браузере.</p>
+        <div class="scene-row">
+          <div class="what"><b>Общий фон</b><small>для сцен без своего</small></div>
+          <span class="file-btn quiet small">Выбрать<input type="file" accept="image/*,video/*" id="bg-all" aria-label="Общий фон"></span>
+          <button class="quiet small" type="button" id="bg-all-clear" hidden>Убрать</button>
+        </div>
+        <div id="scene-list"></div>
+        <div class="scene-row">
+          <div class="what"><b>Музыка</b><small id="music-name">необязательно, затихает к концу</small></div>
+          <span class="file-btn quiet small">Выбрать<input type="file" accept="audio/*" id="music" aria-label="Музыка"></span>
+          <button class="quiet small" type="button" id="music-clear" hidden>Убрать</button>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="quiet small" type="button" id="edit-script">Править текст в «Сценарии»</button></div>
       </section>
       <div id="done"></div>
     </div>
@@ -80,44 +90,70 @@
   const { read, write, el, toast, open } = CS;
   const $ = (id) => document.getElementById(id);
   const cv = $('cv'), ctx = cv.getContext('2d');
-  const W = 1080, H = 1920;
+  let W = 1080, H = 1920;
+  const FORMATS = { '9:16': [1080, 1920, 'Вертикаль 9:16'], '4:5': [1080, 1350, 'Лента 4:5'], '1:1': [1080, 1080, 'Квадрат 1:1'] };
 
-  // Colours come from the kit: resolve each variable through a probe element into something canvas understands.
+  // Colours come only from the kit: each variable is resolved through a probe element into something canvas reads.
   const probe = el('span', { style: 'display:none' }); document.body.append(probe);
   const colour = (v) => { probe.style.color = `var(${v})`; return getComputedStyle(probe).color; };
   const font = () => getComputedStyle(document.body).getPropertyValue('--font-sans').trim() || 'sans-serif';
   const STYLES = {
-    accent: { title: 'Акцент', bg: ['--accent', '--accent-text'], ink: '--accent-ink', soft: '--accent-ink' },
-    clean: { title: 'Светлый', bg: ['--bg-1', '--bg-2'], ink: '--ink', soft: '--accent' },
-    night: { title: 'Контраст', bg: ['--ink', '--ink-2'], ink: '--bg-1', soft: '--accent' },
+    accent: { title: 'Акцент', bg: ['--accent', '--accent-text'], ink: '--accent-ink', mark: '--bg-1', markInk: '--ink' },
+    clean: { title: 'Светлый', bg: ['--bg-1', '--bg-2'], ink: '--ink', mark: '--accent', markInk: '--accent-ink' },
+    night: { title: 'Контраст', bg: ['--ink', '--ink-2'], ink: '--bg-1', mark: '--accent', markInk: '--accent-ink' },
   };
-  let palette = {};
+  let settings = { style: 'accent', format: '9:16', handle: '', subs: true, hookcard: true, ...read('videoSettings', {}) };
+  const saveSettings = () => write('videoSettings', settings);
+  let P = {};
   function loadPalette() {
     const s = STYLES[settings.style] ?? STYLES.accent;
-    palette = { a: colour(s.bg[0]), b: colour(s.bg[1]), ink: colour(s.ink), soft: colour(s.soft), accent: colour('--accent'), shade: colour('--ink') };
+    P = { a: colour(s.bg[0]), b: colour(s.bg[1]), ink: colour(s.ink), mark: colour(s.mark), markInk: colour(s.markInk), shade: colour('--ink'), light: colour('--bg-1'), accent: colour('--accent'), accentInk: colour('--accent-ink') };
+  }
+  function setFormat() {
+    [W, H] = FORMATS[settings.format] ?? FORMATS['9:16'];
+    cv.width = W; cv.height = H;
   }
 
-  let settings = { style: 'accent', handle: '', subs: true, hookcard: true, ...read('videoSettings', {}) };
-  const saveSettings = () => write('videoSettings', settings);
   let script = null, timeline = [], duration = 0;
-  let bgMedia = null; // { kind: 'image'|'video', node }
-  let music = null; // { buffer, name }
+  const media = new Map(); // scene key -> { kind, node }; key 'all' is the common background
+  let music = null;
 
-  // ---- what is shown when -------------------------------------------------------------------------------------
+  // ---- the timeline ------------------------------------------------------------------------------------------------
+  const sceneKey = (i) => `${script?.id}:${i}`;
   function build() {
     timeline = [];
     if (!script) { duration = 0; return; }
-    if (settings.hookcard && script.hook?.trim()) timeline.push({ text: script.hook.trim(), voice: '', seconds: 2, hook: true });
-    for (const s of script.scenes) if ((s.text ?? '').trim() || (s.voice ?? '').trim()) timeline.push({ text: s.text ?? '', voice: s.voice ?? '', seconds: Math.max(1, Number(s.seconds) || 4) });
+    if (settings.hookcard && script.hook?.trim()) timeline.push({ text: script.hook.trim(), voice: '', seconds: 2, layout: 'hook', key: null });
+    script.scenes.forEach((s, i) => {
+      if (!(s.text ?? '').trim() && !(s.voice ?? '').trim() && !(s.items ?? []).length) return;
+      timeline.push({ ...s, text: s.text ?? '', voice: s.voice ?? '', seconds: Math.max(1, Number(s.seconds) || 4), layout: s.layout || 'title', key: sceneKey(i), n: i });
+    });
     let t = 0;
     for (const s of timeline) { s.start = t; t += s.seconds; }
     duration = t;
-    $('len').textContent = duration ? `Длина ${Math.round(duration)} сек, ${timeline.length} кадров` : '';
-    $('scene-list').replaceChildren(...timeline.map((s) => el('li', { text: `${s.hook ? 'Зацепка: ' : ''}${s.text || '(без текста)'} · ${s.seconds} сек` })));
+    $('len').textContent = duration ? `${Math.round(duration)} сек, ${timeline.length} кадров, ${W}×${H}` : '';
+    renderScenes();
   }
 
-  function wrap(text, maxW, size, weight = 800) {
-    ctx.font = `${weight} ${size}px ${font()}`;
+  const LAYOUT_NAMES = { hook: 'Зацепка', title: 'Крупный текст', number: 'Цифра', list: 'Список', quote: 'Цитата', compare: 'Сравнение' };
+  function renderScenes() {
+    $('scene-list').replaceChildren(...timeline.filter((s) => s.key).map((s) => {
+      const has = media.has(s.key);
+      const input = el('input', { type: 'file', accept: 'image/*,video/*', 'aria-label': 'Фон сцены ' + (s.n + 1) });
+      input.onchange = () => loadMedia(input.files[0], s.key);
+      return el('div', { class: 'scene-row' },
+        el('div', { class: 'what' }, el('span', { text: `${s.n + 1}. ${s.emoji ? s.emoji + ' ' : ''}${s.text || '(без текста)'}` }), el('small', { text: `${LAYOUT_NAMES[s.layout] ?? ''} · ${s.seconds} сек${has ? ' · свой фон' : ''}` })),
+        el('span', { class: 'file-btn quiet small' }, has ? 'Заменить фон' : 'Фон', input),
+        has ? el('button', { class: 'quiet small', type: 'button', onclick: () => { media.delete(s.key); renderScenes(); still(); } }, 'Убрать') : null,
+        el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Показать сцену', onclick: () => seek(s.start + Math.min(s.seconds * 0.7, 2)) }, '👁'));
+    }));
+  }
+
+  // ---- drawing -----------------------------------------------------------------------------------------------------
+  const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const setFont = (size, weight = 800, italic = false) => { ctx.font = `${italic ? 'italic ' : ''}${weight} ${size}px ${font()}`; };
+  function wrap(text, maxW) {
     const words = String(text).split(/\s+/).filter(Boolean);
     const lines = []; let line = '';
     for (const w of words) {
@@ -127,152 +163,314 @@
     if (line) lines.push(line);
     return lines;
   }
-  /** The largest size at which the text fits the box. */
-  function fit(text, maxW, maxH, from, to, lh) {
+  function fit(text, maxW, maxH, from, to, lh, weight = 800, italic = false) {
     for (let size = from; size >= to; size -= 4) {
-      const lines = wrap(text, maxW, size);
-      const widest = Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
-      if (lines.length * size * lh <= maxH && widest <= maxW) return { size, lines };
+      setFont(size, weight, italic);
+      const lines = wrap(text, maxW);
+      if (lines.length * size * lh <= maxH && Math.max(0, ...lines.map((l) => ctx.measureText(l).width)) <= maxW) return { size, lines };
     }
-    return { size: to, lines: wrap(text, maxW, to) };
-  }
-  const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
-
-  function drawBackground(t) {
-    if (bgMedia) {
-      const n = bgMedia.node;
-      const iw = n.videoWidth || n.naturalWidth || W, ih = n.videoHeight || n.naturalHeight || H;
-      const k = Math.max(W / iw, H / ih) * (1 + 0.04 * Math.sin(t / 3)); // slow push in
-      const dw = iw * k, dh = ih * k;
-      ctx.drawImage(n, (W - dw) / 2, (H - dh) / 2, dw, dh);
-      const g = ctx.createLinearGradient(0, 0, 0, H);
-      ctx.globalAlpha = 0.55;
-      g.addColorStop(0, palette.shade); g.addColorStop(0.5, 'transparent'); g.addColorStop(1, palette.shade);
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1;
-      return { ink: colour('--bg-1') };
-    }
-    const g = ctx.createLinearGradient(0, 0, W, H);
-    g.addColorStop(0, palette.a); g.addColorStop(1, palette.b);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    // two soft moving lights
-    ctx.globalAlpha = 0.18;
-    for (const [i, r] of [[0, 520], [1, 380]]) {
-      const x = W * (0.3 + 0.4 * Math.sin(t * 0.35 + i * 2.1)), y = H * (0.3 + 0.35 * Math.cos(t * 0.27 + i * 1.3));
-      const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
-      rg.addColorStop(0, palette.soft); rg.addColorStop(1, 'transparent');
-      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
-    }
-    ctx.globalAlpha = 1;
-    return { ink: palette.ink };
-  }
-
-  function draw(t) {
-    ctx.clearRect(0, 0, W, H);
-    const { ink } = drawBackground(t);
-    if (!timeline.length) return;
-    const idx = Math.max(0, timeline.findIndex((s) => t >= s.start && t < s.start + s.seconds));
-    const s = timeline[idx === -1 ? timeline.length - 1 : idx];
-    const local = t - s.start, out = s.start + s.seconds - t;
-
-    // progress segments, like stories
-    const gap = 10, segW = (W - 80 - gap * (timeline.length - 1)) / timeline.length;
-    timeline.forEach((x, i) => {
-      const p = i < idx ? 1 : i > idx ? 0 : Math.min(1, local / x.seconds);
-      ctx.globalAlpha = 0.3; ctx.fillStyle = ink; ctx.fillRect(40 + i * (segW + gap), 60, segW, 8);
-      ctx.globalAlpha = 0.95; ctx.fillRect(40 + i * (segW + gap), 60, segW * p, 8);
-    });
-    ctx.globalAlpha = 1;
-
-    // the main text: words come in one after another
-    const fade = Math.min(1, out / 0.25);
-    const box = fit(s.text, W - 160, s.hook ? 900 : 760, s.hook ? 150 : 128, 56, 1.12);
-    const lh = box.size * 1.12;
-    const top = H * 0.42 - (box.lines.length * lh) / 2;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.font = `800 ${box.size}px ${font()}`;
-    let n = 0;
-    box.lines.forEach((line, li) => {
-      const words = line.split(' ');
-      const widths = words.map((w) => ctx.measureText(w + ' ').width);
-      let x = W / 2 - (ctx.measureText(line).width / 2);
-      words.forEach((w, wi) => {
-        const p = ease((local - n * 0.09) / 0.35); n++;
-        ctx.globalAlpha = p * fade;
-        ctx.fillStyle = ink;
-        ctx.textAlign = 'left';
-        ctx.fillText(w, x, top + li * lh + (1 - p) * 40);
-        x += widths[wi];
-      });
-    });
-    ctx.globalAlpha = 1;
-
-    // subtitles from the voice-over
-    if (settings.subs && s.voice.trim()) {
-      const sub = fit(s.voice.trim(), W - 200, 320, 52, 36, 1.3);
-      const sh = sub.lines.length * sub.size * 1.3 + 40;
-      const y = H - 360 - sh;
-      ctx.globalAlpha = 0.6 * fade; ctx.fillStyle = palette.shade;
-      roundRect(80, y, W - 160, sh, 24); ctx.fill();
-      ctx.globalAlpha = fade; ctx.fillStyle = colour('--bg-1');
-      ctx.font = `600 ${sub.size}px ${font()}`; ctx.textAlign = 'center';
-      sub.lines.forEach((l, i) => ctx.fillText(l, W / 2, y + 20 + i * sub.size * 1.3));
-      ctx.globalAlpha = 1;
-    }
-
-    if (settings.handle.trim()) {
-      ctx.font = `600 44px ${font()}`; ctx.textAlign = 'center'; ctx.fillStyle = ink; ctx.globalAlpha = 0.85;
-      ctx.fillText(settings.handle.trim(), W / 2, H - 200);
-      ctx.globalAlpha = 1;
-    }
+    setFont(to, weight, italic);
+    return { size: to, lines: wrap(text, maxW) };
   }
   function roundRect(x, y, w, h, r) {
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
+  const norm = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, '');
 
-  // ---- playing and recording -------------------------------------------------------------------------------------
-  let playing = null; // { start, raf, timer, stop }
-  let audio = null; // { ctx, src, dest }
+  /** Words appear one after another; the highlighted word sits on a coloured mark. */
+  function words(text, { cx, cy, maxW, maxH, from, to, local, ink, highlight, weight = 800, italic = false, align = 'center', delay = 0 }) {
+    const box = fit(text, maxW, maxH, from, to, 1.14, weight, italic);
+    const lh = box.size * 1.14;
+    let top = cy - (box.lines.length * lh) / 2;
+    const hl = norm(highlight ?? '');
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    let n = 0;
+    box.lines.forEach((line, li) => {
+      const ws = line.split(' ');
+      const space = ctx.measureText(' ').width;
+      const widths = ws.map((w) => ctx.measureText(w).width);
+      const lineW = widths.reduce((a, b) => a + b, 0) + space * (ws.length - 1);
+      let x = align === 'center' ? cx - lineW / 2 : cx;
+      ws.forEach((w, wi) => {
+        const p = ease((local - delay - n * 0.08) / 0.35); n++;
+        const y = top + li * lh + (1 - p) * box.size * 0.35;
+        ctx.globalAlpha = p;
+        if (hl && norm(w) && (norm(w) === hl || norm(w).startsWith(hl))) {
+          const padX = box.size * 0.14;
+          ctx.fillStyle = P.mark; roundRect(x - padX, y - box.size * 0.04, widths[wi] + padX * 2, box.size * 1.12, box.size * 0.2); ctx.fill();
+          ctx.fillStyle = P.markInk;
+        } else ctx.fillStyle = ink;
+        ctx.fillText(w, x, y);
+        x += widths[wi] + space;
+      });
+      top += 0;
+    });
+    ctx.globalAlpha = 1;
+    return { bottom: top + box.lines.length * lh, size: box.size };
+  }
 
+  function drawMedia(m, t, alpha = 1) {
+    const n = m.node;
+    const iw = n.videoWidth || n.naturalWidth || W, ih = n.videoHeight || n.naturalHeight || H;
+    const k = Math.max(W / iw, H / ih) * (1.02 + 0.05 * ((t % 12) / 12)); // slow push in
+    const dw = iw * k, dh = ih * k;
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(n, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    ctx.globalAlpha = 1;
+  }
+  function drawGradient(t, seed) {
+    const g = ctx.createLinearGradient(0, 0, W * 0.6, H);
+    g.addColorStop(0, P.a); g.addColorStop(1, P.b);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.16;
+    for (let i = 0; i < 3; i++) {
+      const x = W * (0.5 + 0.42 * Math.sin(t * 0.3 + i * 2.1 + seed)), y = H * (0.5 + 0.4 * Math.cos(t * 0.23 + i * 1.7 + seed));
+      const r = Math.max(W, H) * (0.22 + 0.08 * i);
+      const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, P.light); rg.addColorStop(1, 'transparent');
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalAlpha = 1;
+  }
+  /** Background of one scene; returns the ink that reads on it. */
+  function background(s, t, alpha = 1) {
+    const m = (s.key && media.get(s.key)) || media.get('all');
+    if (m) {
+      drawMedia(m, t, alpha);
+      ctx.globalAlpha = 0.5 * alpha;
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, P.shade); g.addColorStop(0.45, 'transparent'); g.addColorStop(1, P.shade);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 0.25 * alpha; ctx.fillStyle = P.shade; ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      return P.light;
+    }
+    if (alpha < 1) return P.ink;
+    drawGradient(t, (s.n ?? -1) * 0.9);
+    return P.ink;
+  }
+
+  const S = () => Math.min(W, H) / 1080; // scale against the 1080 wide frame
+  function scene(s, local, ink) {
+    const k = S();
+    const midY = H > 1500 ? H * (s.layout === 'hook' ? 0.46 : 0.42) : (110 * S() + contentBottom()) / 2;
+    const maxW = W - 150 * k;
+    let y = midY;
+    if (s.emoji && !['number', 'list', 'compare'].includes(s.layout)) {
+      const p = ease(local / 0.4);
+      setFont(170 * k, 400); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.globalAlpha = p;
+      ctx.save(); ctx.translate(W / 2, midY - 330 * k * (H / 1920 > 0.8 ? 1 : 0.7)); ctx.scale(0.6 + 0.4 * p, 0.6 + 0.4 * p); ctx.fillText(s.emoji, 0, 0); ctx.restore();
+      ctx.globalAlpha = 1;
+      y = midY + 40 * k;
+    }
+    switch (s.layout) {
+      case 'number': {
+        const big = (s.highlight || (s.text.match(/[\d.,]+\s*%?/) ?? [''])[0]).trim() || s.emoji || '★';
+        const p = ease(local / 0.5);
+        const f = fit(big, maxW, 520 * k, 460 * k, 120 * k, 1, 900);
+        setFont(f.size, 900); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.save(); ctx.translate(W / 2, midY - 40 * k); ctx.scale(0.7 + 0.3 * p, 0.7 + 0.3 * p);
+        ctx.globalAlpha = p; ctx.fillStyle = ink; ctx.fillText(f.lines.join(' '), 0, 0); ctx.restore();
+        ctx.globalAlpha = 1;
+        const rest = s.text.replace(big, '').replace(/\s+/g, ' ').trim() || s.text;
+        words(rest, { cx: W / 2, cy: midY + 140 * k, maxW, maxH: 300 * k, from: 84 * k, to: 44 * k, local, ink, delay: 0.25, weight: 700 });
+        break;
+      }
+      case 'list': {
+        const items = (s.items?.length ? s.items : s.text.split(/[,;]/)).slice(0, 5);
+        const head = words((s.emoji ? s.emoji + ' ' : '') + s.text, { cx: W / 2, cy: H * 0.24, maxW, maxH: 260 * k, from: 96 * k, to: 52 * k, local, ink });
+        const listTop = Math.max(head.bottom + 40 * k, H * 0.33), rowH = Math.min(170 * k, (contentBottom() - listTop) / items.length);
+        items.forEach((it, i) => {
+          const p = ease((local - 0.35 - i * 0.45) / 0.35);
+          const yy = listTop + i * rowH;
+          ctx.globalAlpha = p;
+          const x0 = 90 * k + (1 - p) * 60 * k;
+          const dot = Math.min(84 * k, rowH * 0.8); ctx.fillStyle = P.mark; roundRect(x0, yy, dot, dot, dot * 0.26); ctx.fill();
+          setFont(dot * 0.6, 900); ctx.fillStyle = P.markInk; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), x0 + dot / 2, yy + dot / 2 + 2 * k);
+          const f = fit(it, W - x0 - 230 * k, rowH - 10 * k, 64 * k, 36 * k, 1.12, 700);
+          setFont(f.size, 700); ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          const lh = f.size * 1.12, top = yy + dot / 2 - ((f.lines.length - 1) * lh) / 2;
+          f.lines.forEach((l, li) => ctx.fillText(l, x0 + dot + 36 * k, top + li * lh));
+          ctx.globalAlpha = 1;
+        });
+        break;
+      }
+      case 'quote': {
+        setFont(420 * k, 900); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = P.mark; ctx.globalAlpha = 0.9 * ease(local / 0.4);
+        ctx.fillText('«', 70 * k, midY - 160 * k); ctx.globalAlpha = 1;
+        words(s.text, { cx: W / 2, cy: y + 20 * k, maxW, maxH: 700 * k, from: 104 * k, to: 52 * k, local, ink, highlight: s.highlight, weight: 700, italic: true, delay: 0.2 });
+        break;
+      }
+      case 'compare': {
+        const [a, b] = s.items?.length >= 2 ? s.items : [s.text, ''];
+        words(s.text, { cx: W / 2, cy: H * 0.2, maxW, maxH: 240 * k, from: 90 * k, to: 50 * k, local, ink, highlight: s.highlight });
+        const cmpTop = H * (H > 1500 ? 0.31 : 0.3), boxW = W - 160 * k, boxH = Math.min(270 * k, (contentBottom() - cmpTop - 110 * k) / 2);
+        [[a, 0], [b, 1]].forEach(([txt, i]) => {
+          if (!txt) return;
+          const p = ease((local - 0.4 - i * 0.6) / 0.4);
+          const yy = cmpTop + i * (boxH + 110 * k);
+          ctx.globalAlpha = p;
+          ctx.fillStyle = i ? P.mark : P.shade; ctx.globalAlpha = p * (i ? 1 : 0.55);
+          roundRect(80 * k + (1 - p) * (i ? 60 : -60) * k, yy, boxW, boxH, 36 * k); ctx.fill();
+          ctx.globalAlpha = p;
+          const f = fit(txt, boxW - 100 * k, boxH - 60 * k, 76 * k, 38 * k, 1.12, 800);
+          setFont(f.size, 800); ctx.fillStyle = i ? P.markInk : P.light; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          const lh = f.size * 1.12, top = yy + boxH / 2 - ((f.lines.length - 1) * lh) / 2;
+          f.lines.forEach((l, li) => ctx.fillText(l, W / 2 + (1 - p) * (i ? 60 : -60) * k, top + li * lh));
+          if (i === 0) { setFont(72 * k, 900); ctx.fillStyle = ink; ctx.fillText('↓', W / 2, yy + boxH + 55 * k); }
+          ctx.globalAlpha = 1;
+        });
+        break;
+      }
+      default:
+        words(s.text, { cx: W / 2, cy: y, maxW, maxH: (s.layout === 'hook' ? 0.5 : 0.38) * H, from: (s.layout === 'hook' ? 150 : 126) * k, to: 56 * k, local, ink, highlight: s.highlight });
+    }
+  }
+
+  /** Where the scene content must end, so it never meets the subtitles and the handle. */
+  const contentBottom = () => H - (H > 1500 ? 560 : H > 1200 ? 330 : 250) * S();
+
+  /** Karaoke subtitles: the voice-over in pieces of at most two lines, the word being said on a mark. */
+  function subtitles(s, local) {
+    const ws = s.voice.trim().split(/\s+/).filter(Boolean);
+    if (!ws.length) return;
+    const k = S();
+    const size = (H > 1200 ? 58 : 46) * k, lh = size * 1.3;
+    setFont(size, 800);
+    const space = ctx.measureText(' ').width;
+    const widths = ws.map((w) => ctx.measureText(w).width);
+    const maxW = W - 220 * k;
+    // pieces that fit two lines
+    const pieces = []; let piece = { lines: [[]] }, lw = 0;
+    ws.forEach((w, i) => {
+      if (lw && lw + widths[i] > maxW) {
+        if (piece.lines.length === 2 || /[.!?]$/.test(ws[i - 1])) { pieces.push(piece); piece = { lines: [[]] }; }
+        else piece.lines.push([]);
+        lw = 0;
+      } else if (lw && /[.!?]$/.test(ws[i - 1]) && piece.lines.flat().length >= 3) { pieces.push(piece); piece = { lines: [[]] }; lw = 0; }
+      piece.lines.at(-1).push(i); lw += widths[i] + space;
+    });
+    pieces.push(piece);
+    // when each word is said
+    const weights = ws.map((w) => 1 + w.length / 6 + (/[.,!?:;]$/.test(w) ? 0.8 : 0));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    const speak = s.seconds * 0.94;
+    let acc = 0, cur = ws.length - 1;
+    for (let i = 0; i < ws.length; i++) { acc += (weights[i] / sum) * speak; if (local < acc) { cur = i; break; } }
+    const pc = pieces.find((p) => p.lines.flat().includes(cur)) ?? pieces.at(-1);
+    const lineW = (idxs) => idxs.reduce((a, i) => a + widths[i], 0) + space * (idxs.length - 1);
+    const boxW = Math.max(...pc.lines.map(lineW)) + 56 * k, boxH = pc.lines.length * lh + 30 * k;
+    const boxY = H - (H > 1500 ? 520 : H > 1200 ? 300 : 225) * k + (2 - pc.lines.length) * lh * 0.5;
+    const save = ctx.globalAlpha;
+    ctx.globalAlpha = save * 0.62; ctx.fillStyle = P.shade; roundRect(W / 2 - boxW / 2, boxY, boxW, boxH, 22 * k); ctx.fill();
+    ctx.globalAlpha = save;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    pc.lines.forEach((idxs, li) => {
+      let x = W / 2 - lineW(idxs) / 2;
+      const y = boxY + 15 * k + li * lh + (lh - size) / 2;
+      for (const i of idxs) {
+        const on = i === cur;
+        if (on) { ctx.fillStyle = P.accent; roundRect(x - 10 * k, y - 6 * k, widths[i] + 20 * k, size + 14 * k, 12 * k); ctx.fill(); }
+        ctx.fillStyle = on ? P.accentInk : P.light;
+        ctx.fillText(ws[i], x, y);
+        x += widths[i] + space;
+      }
+    });
+  }
+
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    if (!timeline.length) { drawGradient(t, 0); return; }
+    t = clamp(t, 0, Math.max(0, duration - 0.001));
+    let idx = timeline.findIndex((s) => t >= s.start && t < s.start + s.seconds);
+    if (idx < 0) idx = timeline.length - 1;
+    const s = timeline[idx];
+    const local = t - s.start;
+    const k = S();
+
+    let ink = background(s, t);
+    // a short cross fade from the previous scene's own picture
+    const prev = timeline[idx - 1];
+    if (prev && local < 0.35 && ((prev.key && media.get(prev.key)) !== ((s.key && media.get(s.key)) || undefined))) {
+      const pm = (prev.key && media.get(prev.key)) || media.get('all');
+      if (pm) drawMedia(pm, t, 1 - local / 0.35);
+    }
+
+    // the scene, with a soft zoom in and a fade out at its end
+    const out = s.start + s.seconds - t;
+    const fade = idx === timeline.length - 1 ? 1 : clamp(out / 0.22, 0, 1);
+    const z = 1.06 - 0.06 * ease(local / 0.5);
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+    scene(s, local, ink);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // progress, like stories
+    const gap = 10 * k, segW = (W - 80 * k - gap * (timeline.length - 1)) / timeline.length;
+    timeline.forEach((x, i) => {
+      const p = i < idx ? 1 : i > idx ? 0 : Math.min(1, local / x.seconds);
+      ctx.globalAlpha = 0.3; ctx.fillStyle = ink; roundRect(40 * k + i * (segW + gap), 50 * k, segW, 8 * k, 4 * k); ctx.fill();
+      ctx.globalAlpha = 0.95; if (p > 0) { roundRect(40 * k + i * (segW + gap), 50 * k, Math.max(8 * k, segW * p), 8 * k, 4 * k); ctx.fill(); }
+    });
+    ctx.globalAlpha = 1;
+
+    if (settings.subs && s.voice?.trim()) { ctx.globalAlpha = fade; subtitles(s, local); ctx.globalAlpha = 1; }
+
+    if (settings.handle.trim()) {
+      setFont(42 * k, 700); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink; ctx.globalAlpha = 0.85;
+      if (H > 1500) ctx.fillText(settings.handle.trim(), W / 2, H - 170 * k); else { ctx.textAlign = 'right'; setFont(34 * k, 700); ctx.fillText(settings.handle.trim(), W - 44 * k, 110 * k); }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---- playing, seeking and recording -------------------------------------------------------------------------------
+  let playing = null, audio = null, at = 0.9;
+  function still() { draw(at); }
+  function seek(t) { stop(); at = clamp(t, 0, duration); $('scrub').value = duration ? Math.round((at / duration) * 1000) : 0; syncVideos(at, false); setTimeout(still, 60); still(); }
+  $('scrub').oninput = () => { stop(); at = (Number($('scrub').value) / 1000) * duration; syncVideos(at, false); still(); };
+
+  function syncVideos(t, play) {
+    for (const m of media.values()) if (m.kind === 'video') { try { m.node.currentTime = t % (m.node.duration || 1e9); play ? m.node.play().catch(() => {}) : m.node.pause(); } catch {} }
+  }
   function startMusic(toDest) {
     if (!music) return null;
     const ac = new AudioContext();
     const src = ac.createBufferSource(); src.buffer = music.buffer;
-    const gain = ac.createGain(); gain.gain.value = 0.9;
+    const gain = ac.createGain();
     src.connect(gain); gain.connect(ac.destination);
     let dest = null;
     if (toDest) { dest = ac.createMediaStreamDestination(); gain.connect(dest); }
-    // fade out in the last second
-    gain.gain.setValueAtTime(0.9, ac.currentTime + Math.max(0, duration - 1));
+    gain.gain.setValueAtTime(0, ac.currentTime); gain.gain.linearRampToValueAtTime(0.9, ac.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.9, ac.currentTime + Math.max(0.3, duration - 1.2));
     gain.gain.linearRampToValueAtTime(0, ac.currentTime + duration);
     src.start();
     return { ac, src, dest };
   }
-
   function stop() {
     if (!playing) return;
     cancelAnimationFrame(playing.raf); clearInterval(playing.timer);
     if (audio) { try { audio.src.stop(); audio.ac.close(); } catch {} audio = null; }
-    if (bgMedia?.kind === 'video') bgMedia.node.pause();
+    syncVideos(at, false);
     const p = playing; playing = null;
     p.onEnd?.();
     $('play').textContent = '▶ Смотреть';
-    draw(Math.min(duration, 0.9));
   }
-
   function play({ record = false, onEnd, onTick } = {}) {
     if (!duration) { toast('В сценарии нет сцен с текстом'); return null; }
     stop();
     audio = startMusic(record);
-    if (bgMedia?.kind === 'video') { bgMedia.node.currentTime = 0; bgMedia.node.play().catch(() => {}); }
+    syncVideos(0, true);
     const start = performance.now();
     playing = { onEnd };
     const frame = () => {
       if (!playing) return;
       const t = (performance.now() - start) / 1000;
-      if (t >= duration) { draw(duration - 0.001); stop(); return; }
-      draw(t); onTick?.(t / duration);
+      if (t >= duration) { at = duration - 0.001; draw(at); stop(); return; }
+      at = t; draw(t); onTick?.(t / duration);
+      $('scrub').value = Math.round((t / duration) * 1000);
     };
     const loop = () => { frame(); if (playing) playing.raf = requestAnimationFrame(loop); };
     playing.raf = requestAnimationFrame(loop);
@@ -280,14 +478,13 @@
     $('play').textContent = '■ Стоп';
     return audio;
   }
-
   $('play').onclick = () => (playing ? stop() : play());
 
+  const fileName = (ext) => (script?.topic || 'video').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + settings.format.replace(':', 'x') + '.' + ext;
   function pickType() {
     const list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
     return list.find((t) => window.MediaRecorder?.isTypeSupported?.(t)) ?? '';
   }
-
   $('rec').onclick = async () => {
     if (!window.MediaRecorder || !cv.captureStream) { $('done').replaceChildren(el('p', { class: 'note bad', text: 'Этот браузер не умеет сохранять видео. Откройте shell в Chrome, Edge или Safari 17+.' })); return; }
     if (!duration) { toast('В сценарии нет сцен с текстом'); return; }
@@ -295,7 +492,7 @@
     const type = pickType();
     const stream = cv.captureStream(30);
     const chunks = [];
-    $('rec').disabled = true; $('play').disabled = true;
+    $('rec').disabled = true; $('play').disabled = true; $('cover').disabled = true;
     $('rec-state').hidden = false; $('rec-bar').value = 0;
     $('done').replaceChildren();
     let rec;
@@ -309,22 +506,37 @@
     catch { rec = new MediaRecorder(stream); }
     rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     rec.onstop = () => {
-      $('rec').disabled = false; $('play').disabled = false; $('rec-state').hidden = true;
+      $('rec').disabled = false; $('play').disabled = false; $('cover').disabled = false; $('rec-state').hidden = true;
       const mime = rec.mimeType || type || 'video/webm';
       const blob = new Blob(chunks, { type: mime });
       if (!blob.size) { $('done').replaceChildren(el('p', { class: 'note bad', text: 'Видео не записалось. Попробуйте ещё раз и не переключайте вкладку во время записи.' })); return; }
       const ext = mime.includes('mp4') ? 'mp4' : 'webm';
-      const name = (script.topic || 'video').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) + '.' + ext;
+      const name = fileName(ext);
       const url = URL.createObjectURL(blob);
-      const link = el('a', { class: 'primary', href: url, download: name, style: 'display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;text-decoration:none;background:var(--accent);color:var(--accent-ink);font-weight:600' }, 'Скачать ' + name);
-      const note = ext === 'webm' ? 'Файл в формате WebM: TikTok и YouTube его принимают; для Instagram сохраните в Chrome или Safari, там будет MP4.' : 'Файл MP4, подходит для Reels, TikTok и Shorts.';
-      $('done').replaceChildren(el('section', { class: 'surface card' }, el('h2', { text: 'Готово' }),
+      const link = el('a', { href: url, download: name, style: 'display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;text-decoration:none;background:var(--accent);color:var(--accent-ink);font-weight:600' }, 'Скачать ещё раз');
+      const note = ext === 'webm' ? 'Файл WebM: TikTok и YouTube его принимают; для Instagram сохраните в Chrome или Safari, там будет MP4.' : 'Файл MP4, подходит для Reels, TikTok и Shorts.';
+      $('done').replaceChildren(el('section', { class: 'surface card' }, el('h2', { text: 'Готово: ' + name }),
         el('video', { src: url, controls: true, playsInline: true, style: 'width:100%;max-width:260px;border-radius:10px;display:block;margin:0 0 10px' }),
-        link, el('p', { class: 'hint', text: `${(blob.size / 1048576).toFixed(1)} МБ. ${note}` })));
+        el('div', { class: 'row' }, link, el('button', { class: 'quiet', type: 'button', onclick: () => CS.copy([script.caption, (script.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n')) }, 'Скопировать подпись')),
+        el('p', { class: 'hint', text: `${(blob.size / 1048576).toFixed(1)} МБ. ${note}` })));
       link.click();
       markVideo();
     };
     rec.start(250);
+  };
+
+  $('cover').onclick = async () => {
+    await document.fonts?.ready;
+    stop();
+    const t = timeline.length ? Math.min(timeline[0].seconds * 0.85, 1.6) : 0;
+    draw(t);
+    cv.toBlob((b) => {
+      if (!b) { toast('Обложка не получилась'); return; }
+      const a = el('a', { href: URL.createObjectURL(b), download: fileName('png').replace('.png', '-cover.png') });
+      document.body.append(a); a.click(); a.remove();
+      toast('Обложка сохранена');
+      still();
+    }, 'image/png');
   };
 
   function markVideo() {
@@ -335,23 +547,23 @@
   }
 
   // ---- inputs --------------------------------------------------------------------------------------------------
-  $('bg').onchange = () => {
-    const f = $('bg').files[0];
+  function loadMedia(f, key) {
     if (!f) return;
     const url = URL.createObjectURL(f);
+    const done = (m) => { media.set(key, m); renderScenes(); if (key === 'all') $('bg-all-clear').hidden = false; still(); };
     if (f.type.startsWith('video/')) {
       const v = el('video', { muted: true, loop: true, playsInline: true }); v.muted = true; v.src = url;
-      v.onloadeddata = () => { bgMedia = { kind: 'video', node: v }; draw(0.9); };
+      v.onloadeddata = () => done({ kind: 'video', node: v });
       v.onerror = () => toast('Это видео браузер не открыл');
     } else {
       const img = new Image();
-      img.onload = () => { bgMedia = { kind: 'image', node: img }; draw(0.9); };
+      img.onload = () => done({ kind: 'image', node: img });
       img.onerror = () => toast('Эту картинку браузер не открыл');
       img.src = url;
     }
-    $('bg-clear').hidden = false;
-  };
-  $('bg-clear').onclick = () => { bgMedia = null; $('bg').value = ''; $('bg-clear').hidden = true; draw(0.9); };
+  }
+  $('bg-all').onchange = () => loadMedia($('bg-all').files[0], 'all');
+  $('bg-all-clear').onclick = () => { media.delete('all'); $('bg-all').value = ''; $('bg-all-clear').hidden = true; still(); };
   $('music').onchange = async () => {
     const f = $('music').files[0];
     if (!f) return;
@@ -359,21 +571,23 @@
       const ac = new AudioContext();
       music = { buffer: await ac.decodeAudioData(await f.arrayBuffer()), name: f.name };
       ac.close();
-      $('music-clear').hidden = false;
-      toast('Музыка добавлена');
+      $('music-clear').hidden = false; $('music-name').textContent = f.name;
     } catch { music = null; toast('Этот звук браузер не открыл, попробуйте MP3'); }
   };
-  $('music-clear').onclick = () => { music = null; $('music').value = ''; $('music-clear').hidden = true; };
+  $('music-clear').onclick = () => { music = null; $('music').value = ''; $('music-clear').hidden = true; $('music-name').textContent = 'необязательно, затихает к концу'; };
 
-  $('styles').replaceChildren(...Object.entries(STYLES).map(([k, s]) => el('button', {
-    class: 'quiet small' + (settings.style === k ? ' chip on' : ''), type: 'button', role: 'radio', 'aria-checked': String(settings.style === k),
-    onclick: () => { settings.style = k; saveSettings(); loadPalette(); renderStyles(); draw(0.9); },
-  }, s.title)));
-  function renderStyles() { [...$('styles').children].forEach((b, i) => { const on = Object.keys(STYLES)[i] === settings.style; b.className = 'quiet small' + (on ? ' chip on' : ''); b.ariaChecked = String(on); }); }
+  function pills(box, entries, current, onPick) {
+    box.replaceChildren(...entries.map(([k, t]) => el('button', {
+      class: 'quiet small' + (current() === k ? ' chip on' : ''), type: 'button', role: 'radio', 'aria-checked': String(current() === k),
+      onclick: () => { onPick(k); pills(box, entries, current, onPick); },
+    }, t)));
+  }
+  pills($('styles'), Object.entries(STYLES).map(([k, s]) => [k, s.title]), () => settings.style, (k) => { settings.style = k; saveSettings(); loadPalette(); still(); });
+  pills($('formats'), Object.entries(FORMATS).map(([k, f]) => [k, f[2]]), () => settings.format, (k) => { settings.format = k; saveSettings(); setFormat(); build(); still(); });
   $('handle').value = settings.handle;
-  $('handle').oninput = () => { settings.handle = $('handle').value; saveSettings(); draw(0.9); };
-  $('subs').checked = settings.subs; $('subs').onchange = () => { settings.subs = $('subs').checked; saveSettings(); draw(0.9); };
-  $('hookcard').checked = settings.hookcard; $('hookcard').onchange = () => { settings.hookcard = $('hookcard').checked; saveSettings(); build(); draw(0.9); };
+  $('handle').oninput = () => { settings.handle = $('handle').value; saveSettings(); still(); };
+  $('subs').checked = settings.subs; $('subs').onchange = () => { settings.subs = $('subs').checked; saveSettings(); still(); };
+  $('hookcard').checked = settings.hookcard; $('hookcard').onchange = () => { settings.hookcard = $('hookcard').checked; saveSettings(); build(); still(); };
   $('go-script').onclick = () => open('script');
   $('edit-script').onclick = () => { if (script) write('current', { scriptId: script.id }); open('script'); };
   $('pick').onchange = () => choose($('pick').value);
@@ -382,7 +596,7 @@
     const list = read('scripts', []);
     script = list.find((s) => s.id === id) ?? list[0] ?? null;
     if (script) write('videoLast', script.id);
-    stop(); build(); draw(0.9);
+    stop(); build(); at = Math.min(at, duration || 0.9); still();
   }
 
   function refresh() {
@@ -399,9 +613,10 @@
     if (!playing) choose(want);
   }
 
+  setFormat();
   loadPalette();
-  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { loadPalette(); draw(0.9); });
-  (document.fonts?.ready ?? Promise.resolve()).then(() => draw(0.9));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { loadPalette(); still(); });
+  (document.fonts?.ready ?? Promise.resolve()).then(still);
   CS.onChange(refresh);
   refresh();
 </script>

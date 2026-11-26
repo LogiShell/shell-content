@@ -116,7 +116,23 @@
           el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Ниже', onclick: () => move(1) }, '↓'),
           el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Удалить сцену', onclick: () => { cur.scenes.splice(idx, 1); persist(); renderEditor(); } }, '✕'))),
       el('div', { class: 'grid2' }, inp('text', 'Текст на экране'), inp('visual', 'Что в кадре')),
-      inp('voice', 'Закадр / что говорить', true));
+      inp('voice', 'Закадр / что говорить', true),
+      el('div', { class: 'grid2' }, layoutPick(sc), el('div', { class: 'grid2' }, inp('emoji', 'Эмодзи'), inp('highlight', 'Выделить слово'))),
+      sc.layout === 'list' || sc.layout === 'compare' ? itemsField(sc) : null);
+  }
+
+  const LAYOUTS = { title: 'Крупный текст', number: 'Большая цифра', list: 'Список', quote: 'Цитата', compare: 'Сравнение' };
+  function layoutPick(sc) {
+    const f = el('select', { class: 'field', 'aria-label': 'Подача сцены' }, Object.entries(LAYOUTS).map(([k, t]) => el('option', { value: k, text: t })));
+    f.value = sc.layout || 'title';
+    f.onchange = () => { sc.layout = f.value; persist(); renderEditor(); };
+    return el('div', {}, el('label', { class: 'l', text: 'Подача' }), f);
+  }
+  function itemsField(sc) {
+    const f = el('textarea', { class: 'field', rows: 3, 'aria-label': 'Пункты' });
+    f.value = (sc.items ?? []).join('\n');
+    f.oninput = () => { sc.items = f.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 5); persist(); };
+    return el('div', {}, el('label', { class: 'l', text: sc.layout === 'compare' ? 'Две стороны, по строке: «Было», «Стало»' : 'Пункты списка, по строке (до 5)' }), f);
   }
 
   function renderEditor() {
@@ -158,8 +174,15 @@
 Тон: ${b.tone}${b.audience ? '\nАудитория: ' + b.audience : ''}
 
 Правила: зацепка в первые 2 секунды; 4..7 сцен; текст на экране не длиннее 7 слов; сумма секунд сцен примерно равна длине; в конце призыв (подписаться, сохранить, написать в комментариях).
+Ты ещё и режиссёр монтажа: для каждой сцены выбери подачу layout:
+- "title" крупный текст;
+- "number" большая цифра или факт, сама цифра в highlight (например "3", "90%", "5 мин");
+- "list" список, пункты в items (2..4 коротких);
+- "quote" цитата или мысль;
+- "compare" сравнение, ровно два пункта в items (было/стало, миф/правда).
+Чередуй подачи, не делай все сцены одинаковыми. emoji: один подходящий эмодзи. highlight: одно ключевое слово из text, которое выделить цветом.
 Ответ строго JSON:
-{"hook":"...","scenes":[{"text":"текст на экране","voice":"что говорить за кадром","visual":"что снять или показать","seconds":4}],"caption":"подпись к посту, 2..4 предложения","hashtags":["#...","#..."]}`;
+{"hook":"...","scenes":[{"text":"текст на экране","voice":"что говорить за кадром","visual":"что снять или показать","seconds":4,"layout":"title","emoji":"☕","highlight":"слово","items":[]}],"caption":"подпись к посту, 2..4 предложения","hashtags":["#...","#..."]}`;
 
   function fromAnswer(b, text, ideaId) {
     const j = json(text);
@@ -171,7 +194,12 @@
       id: uid(), ideaId: ideaId ?? null, topic: b.topic, platform: b.platform, tone: b.tone,
       hook: String(j.hook ?? ''), caption: String(j.caption ?? ''),
       hashtags: (Array.isArray(j.hashtags) ? j.hashtags : []).map(String).slice(0, 15),
-      scenes: j.scenes.slice(0, 12).map((x) => ({ text: String(x.text ?? ''), voice: String(x.voice ?? ''), visual: String(x.visual ?? ''), seconds: Math.max(1, Math.min(30, Number(x.seconds) || 4)) })),
+      scenes: j.scenes.slice(0, 12).map((x) => ({
+        text: String(x.text ?? ''), voice: String(x.voice ?? ''), visual: String(x.visual ?? ''), seconds: Math.max(1, Math.min(30, Number(x.seconds) || 4)),
+        layout: ['title', 'number', 'list', 'quote', 'compare'].includes(x.layout) ? x.layout : 'title',
+        emoji: String(x.emoji ?? '').slice(0, 8), highlight: String(x.highlight ?? '').slice(0, 40),
+        items: (Array.isArray(x.items) ? x.items : []).map(String).filter(Boolean).slice(0, 5),
+      })),
       created: new Date().toISOString(),
     };
     cur = s; persist(); setIdeaStatus(ideaId, 'script');
@@ -190,7 +218,7 @@
     $('out').replaceChildren(el('p', { class: 'hint', text: 'Обычно это 10..30 секунд.' }));
     const idea = ideaFor;
     try {
-      fromAnswer(b, await ask({ system: SYSTEM, prompt: promptFor(b), maxTokens: 2500 }), idea);
+      fromAnswer(b, await ask({ system: SYSTEM, prompt: promptFor(b), maxTokens: 3500 }), idea);
     } catch (err) {
       if (err instanceof NoRail) $('out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(b), (t) => fromAnswer(b, t, idea)));
       else $('out').replaceChildren(el('p', { class: 'note bad', text: err.message || 'Claude не ответил. Попробуйте ещё раз.' }));
