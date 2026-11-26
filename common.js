@@ -123,16 +123,32 @@
    * A small panel for when Claude cannot be reached from here: copy the request, paste the answer.
    * onAnswer gets the pasted text.
    */
-  function manualPanel(fullPrompt, onAnswer) {
+  function manualPanel(fullPrompt, onAnswer, retry) {
     const ta = el('textarea', { class: 'field', rows: 6, placeholder: 'Вставьте сюда ответ Claude целиком', 'aria-label': 'Ответ Claude' });
+    const canSignIn = !!window.logishell?.id?.signIn;
+    const signIn = canSignIn ? el('button', { class: 'primary', type: 'button' }, 'Войти через LogiShell') : null;
+    if (signIn) signIn.onclick = async () => {
+      signIn.disabled = true; signIn.textContent = 'Подтвердите вход в открывшейся вкладке…';
+      try {
+        await window.logishell.id.signIn();
+        toast('Вход выполнен, Claude подключён');
+        if (retry) retry();
+      } catch (e) {
+        signIn.disabled = false; signIn.textContent = 'Войти через LogiShell';
+        toast('Вход не завершён. Можно попробовать ещё раз.');
+      }
+    };
     return el('div', { class: 'note' },
-      el('p', { style: 'margin:0 0 8px' }, 'Claude отсюда пока не подключён. Войдите через LogiShell или добавьте ключ во вкладке «Данные». А пока можно вручную: скопируйте запрос, вставьте в любой чат с Claude, ответ вставьте ниже.'),
-      el('div', { class: 'row' },
-        el('button', { class: 'quiet', type: 'button', onclick: () => copy(fullPrompt) }, 'Скопировать запрос'),
-        el('button', { class: 'quiet', type: 'button', onclick: () => open('data') }, 'Подключить Claude')),
-      el('div', { style: 'margin-top:8px' }, ta),
-      el('div', { class: 'row', style: 'margin-top:8px' },
-        el('button', { class: 'primary', type: 'button', onclick: () => onAnswer(ta.value) }, 'Готово')));
+      el('p', { style: 'margin:0 0 8px' }, canSignIn
+        ? 'Чтобы Claude работал прямо здесь, войдите через LogiShell: один клик и подтверждение во вкладке, ключ не нужен.'
+        : 'Claude отсюда пока не подключён: добавьте свой ключ во вкладке «Данные».'),
+      el('div', { class: 'row' }, signIn, el('button', { class: 'quiet', type: 'button', onclick: () => open('data') }, canSignIn ? 'Свой ключ' : 'Подключить Claude')),
+      el('details', { style: 'margin-top:10px' },
+        el('summary', {}, 'Или вручную, через любой чат с Claude'),
+        el('p', { class: 'hint' }, 'Скопируйте запрос, вставьте в чат с Claude, его ответ вставьте ниже.'),
+        el('div', { class: 'row', style: 'margin-top:6px' }, el('button', { class: 'quiet', type: 'button', onclick: () => copy(fullPrompt) }, 'Скопировать запрос')),
+        el('div', { style: 'margin-top:8px' }, ta),
+        el('div', { class: 'row', style: 'margin-top:8px' }, el('button', { class: 'primary', type: 'button', onclick: () => onAnswer(ta.value) }, 'Готово'))));
   }
 
   const PLATFORMS = ['Reels', 'TikTok', 'Shorts', 'Telegram', 'VK Клипы', 'Пост'];

@@ -220,7 +220,7 @@
     try {
       fromAnswer(b, await ask({ system: SYSTEM, prompt: promptFor(b), maxTokens: 3500 }), idea);
     } catch (err) {
-      if (err instanceof NoRail) $('out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(b), (t) => fromAnswer(b, t, idea)));
+      if (err instanceof NoRail) $('out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(b), (t) => fromAnswer(b, t, idea), () => $('brief').requestSubmit()));
       else $('out').replaceChildren(el('p', { class: 'note bad', text: err.message || 'Claude не ответил. Попробуйте ещё раз.' }));
     } finally { btn.disabled = false; btn.textContent = 'Написать с Claude'; }
   };

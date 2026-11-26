@@ -126,7 +126,7 @@
     try {
       takeIdeas(await ask({ system: SYSTEM, prompt: promptFor(niche), maxTokens: 1500 }));
     } catch (err) {
-      if (err instanceof NoRail) $('gen-out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(niche), takeIdeas));
+      if (err instanceof NoRail) $('gen-out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(niche), takeIdeas, () => $('gen').requestSubmit()));
       else $('gen-out').replaceChildren(el('p', { class: 'note bad', text: err.message || 'Claude не ответил. Попробуйте ещё раз.' }));
     } finally {
       btn.disabled = false; btn.textContent = 'Придумать 8 идей';
