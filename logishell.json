@@ -1,0 +1,21 @@
+{
+  "id": "content-studio",
+  "name": "Контент-студия",
+  "version": "0.1.0",
+  "tools": [
+    { "id": "ideas", "title": "Идеи", "icon": "✦", "description": "Копилка идей для постов и роликов, можно придумать вместе с Claude.", "page": "ideas.html" },
+    { "id": "script", "title": "Сценарий", "icon": "✎", "description": "Claude пишет сценарий короткого ролика: зацепка, сцены, подпись и хэштеги.", "page": "script.html" },
+    { "id": "video", "title": "Видео", "icon": "▶", "description": "Собирает вертикальный ролик из сцен сценария и отдаёт файл для соцсети.", "page": "video.html" },
+    { "id": "plan", "title": "План", "icon": "▦", "description": "Что и когда выходит, на какой площадке, с готовой подписью.", "page": "plan.html" },
+    { "id": "data", "title": "Данные", "icon": "⇅", "description": "Вход, ключ Claude, выгрузка и загрузка всех данных одним файлом.", "page": "data.html" }
+  ],
+  "shells": [
+    {
+      "id": "main",
+      "title": "Контент-студия",
+      "description": "Идеи, сценарии с Claude, вертикальные ролики и план публикаций для соцсетей.",
+      "tools": ["ideas", "script", "video", "plan", "data", "core.notes"],
+      "home": "ideas"
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Данные</title>
+<link rel="stylesheet" href="lsh://kit/kit.css">
+<link rel="stylesheet" href="common.css">
+<style>
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+  .stat b { display: block; font-size: var(--text-xl); }
+  .stat span { color: var(--ink-3); font-size: var(--text-sm); }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Контент-студия</p>
+  <h1>Данные и Claude</h1>
+  <p class="lead">Как shell достучится до Claude, и что с вашими данными: всё хранится только в этом браузере, здесь их можно сохранить в файл и перенести.</p>
+
+  <section class="surface card">
+    <h2>Claude</h2>
+    <div id="rail"></div>
+    <details id="byok" style="margin-top:12px">
+      <summary>Свой ключ Anthropic</summary>
+      <p class="hint">Ключ хранится только в этом браузере и уходит напрямую в Anthropic. Взять ключ: console.anthropic.com, раздел API keys.</p>
+      <form class="row" id="key-form" style="margin-top:8px">
+        <input class="field grow" id="key" type="password" placeholder="sk-ant-…" autocomplete="off" aria-label="Ключ Anthropic">
+        <button class="quiet">Сохранить</button>
+        <button class="quiet" type="button" id="key-test">Проверить</button>
+        <button class="quiet" type="button" id="key-del">Удалить</button>
+      </form>
+      <div id="key-out"></div>
+    </details>
+  </section>
+
+  <section class="surface card">
+    <h2>Что накоплено</h2>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="surface card">
+    <h2>Сохранить и перенести</h2>
+    <p class="hint" style="margin:0 0 10px">Файл с идеями, сценариями и планом. Ключ Claude в файл не попадает.</p>
+    <div class="row">
+      <button class="primary" type="button" id="export">Скачать всё (JSON)</button>
+      <button class="quiet" type="button" id="csv">План в таблицу (CSV)</button>
+      <label class="quiet" style="display:inline-flex;align-items:center" tabindex="0" id="import-label">Загрузить из файла<input type="file" id="import" accept="application/json,.json" hidden></label>
+    </div>
+    <div id="io-out"></div>
+  </section>
+
+  <section class="surface card">
+    <h2>Начать с чистого листа</h2>
+    <p class="hint" style="margin:0 0 10px">Удаляет идеи, сценарии и план из этого браузера. Сначала скачайте копию.</p>
+    <button class="quiet" type="button" id="wipe">Очистить всё</button>
+  </section>
+</main>
+<script src="common.js"></script>
+<script>
+  const { read, write, el, toast, ask } = CS;
+  const $ = (id) => document.getElementById(id);
+  const KEYS = ['ideas', 'scripts', 'plan', 'videoSettings', 'niche', 'lastPlatform'];
+
+  async function renderRail() {
+    const r = await CS.rails();
+    const box = $('rail');
+    if (r.logishell) {
+      let who = null;
+      try { who = await window.logishell.id.whoami(); } catch {}
+      if (who?.signedIn) {
+        box.replaceChildren(el('p', { class: 'note good', text: `Вход через LogiShell: ${who.email || who.name || 'выполнен'}. Claude работает без ключа.` }),
+          el('div', { class: 'row', style: 'margin-top:8px' }, el('button', { class: 'quiet small', type: 'button', onclick: async () => { try { await window.logishell.id.signOut(); } catch {} renderRail(); } }, 'Выйти')));
+      } else {
+        const btn = el('button', { class: 'primary', type: 'button' }, 'Войти через LogiShell');
+        btn.onclick = async () => {
+          btn.disabled = true; btn.textContent = 'Подтвердите вход в открывшейся вкладке…';
+          try { await window.logishell.id.signIn(); toast('Вход выполнен'); }
+          catch (e) { toast(e.message || 'Вход не завершён'); }
+          renderRail();
+        };
+        box.replaceChildren(el('p', { style: 'margin:0 0 8px', text: 'Один аккаунт LogiShell, и Claude работает во всех инструментах без ключа.' }), btn);
+      }
+      return;
+    }
+    box.replaceChildren(el('p', { class: 'note', text: r.key
+      ? 'Claude работает через ваш ключ Anthropic.'
+      : 'Вход через LogiShell появится здесь, как только рамка shell его поддержит. Пока: свой ключ Anthropic ниже или ручной режим (скопировать запрос в чат с Claude).' }));
+    if (!r.key) $('byok').open = true;
+  }
+
+  function renderKey() {
+    const k = read('settings', {}).apiKey;
+    $('key').value = '';
+    $('key').placeholder = k ? 'Ключ сохранён: …' + k.slice(-4) : 'sk-ant-…';
+    $('key-del').hidden = !k; $('key-test').hidden = !k;
+  }
+  $('key-form').onsubmit = (e) => {
+    e.preventDefault();
+    const v = $('key').value.trim();
+    if (!v) { $('key').focus(); return; }
+    if (!v.startsWith('sk-ant-')) { $('key-out').replaceChildren(el('p', { class: 'note bad', text: 'Ключ Anthropic начинается с sk-ant-. Проверьте, что скопировали его целиком.' })); return; }
+    write('settings', { ...read('settings', {}), apiKey: v });
+    $('key-out').replaceChildren(); toast('Ключ сохранён'); renderKey(); renderRail();
+  };
+  $('key-del').onclick = () => { const s = read('settings', {}); delete s.apiKey; write('settings', s); renderKey(); renderRail(); toast('Ключ удалён'); };
+  $('key-test').onclick = async () => {
+    $('key-out').replaceChildren(el('p', { class: 'hint', text: 'Спрашиваю Claude…' }));
+    try {
+      const a = await ask({ system: 'Отвечай одним словом.', prompt: 'Скажи «работает».', maxTokens: 20 });
+      $('key-out').replaceChildren(el('p', { class: 'note good', text: 'Claude ответил: ' + a.trim() }));
+    } catch (e) { $('key-out').replaceChildren(el('p', { class: 'note bad', text: e instanceof CS.NoRail ? 'Ключ не сохранён.' : e.message })); }
+  };
+
+  function renderStats() {
+    const ideas = read('ideas', []), scripts = read('scripts', []), plan = read('plan', []);
+    const s = [['Идей', ideas.length], ['Сценариев', scripts.length], ['В плане', plan.filter((p) => p.status !== 'posted').length], ['Вышло', plan.filter((p) => p.status === 'posted').length]];
+    $('stats').replaceChildren(...s.map(([t, n]) => el('div', { class: 'stat' }, el('b', { text: String(n) }), el('span', { text: t }))));
+  }
+
+  function download(name, text, type) {
+    const a = el('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+    document.body.append(a); a.click(); a.remove();
+  }
+  $('export').onclick = () => {
+    const data = { app: 'content-studio', version: 1, saved: new Date().toISOString(), data: Object.fromEntries(KEYS.map((k) => [k, read(k, null)]).filter(([, v]) => v != null)) };
+    download(`content-studio-${CS.today()}.json`, JSON.stringify(data, null, 2), 'application/json');
+    toast('Файл сохранён');
+  };
+  $('csv').onclick = () => {
+    const plan = read('plan', []);
+    if (!plan.length) { toast('План пуст'); return; }
+    const q = (v) => '"' + String(v ?? '').replaceAll('"', '""') + '"';
+    const rows = [['Дата', 'Площадка', 'Что', 'Статус', 'Подпись'], ...plan.map((p) => [p.date, p.platform, p.title, p.status === 'posted' ? 'Вышло' : 'В плане', p.caption])];
+    download(`plan-${CS.today()}.csv`, '﻿' + rows.map((r) => r.map(q).join(',')).join('\n'), 'text/csv');
+  };
+  $('import-label').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('import').click(); } };
+  $('import').onchange = async () => {
+    const f = $('import').files[0];
+    $('import').value = '';
+    if (!f) return;
+    let j = null;
+    try { j = JSON.parse(await f.text()); } catch {}
+    if (!j || j.app !== 'content-studio' || typeof j.data !== 'object') { $('io-out').replaceChildren(el('p', { class: 'note bad', text: 'Это не файл Контент-студии.' })); return; }
+    const mode = confirm('Объединить с тем, что уже есть?\n\nОК: объединить (одинаковые записи не задвоятся).\nОтмена: заменить всё содержимым файла.') ? 'merge' : 'replace';
+    for (const k of KEYS) {
+      const incoming = j.data[k];
+      if (incoming == null) continue;
+      if (mode === 'merge' && Array.isArray(incoming)) {
+        const have = read(k, []);
+        const ids = new Set(have.map((x) => x.id));
+        write(k, [...have, ...incoming.filter((x) => !ids.has(x.id))]);
+      } else if (mode === 'replace' || read(k, null) == null) write(k, incoming);
+    }
+    $('io-out').replaceChildren(el('p', { class: 'note good', text: mode === 'merge' ? 'Данные объединены.' : 'Данные заменены содержимым файла.' }));
+    renderStats();
+  };
+  $('wipe').onclick = () => {
+    if (!confirm('Удалить все идеи, сценарии и план из этого браузера? Отменить нельзя.')) return;
+    for (const k of KEYS) localStorage.removeItem('cs.' + k);
+    localStorage.removeItem('cs.current');
+    renderStats(); toast('Очищено');
+  };
+
+  CS.onChange(() => { renderStats(); });
+  renderKey(); renderStats(); renderRail();
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>План</title>
+<link rel="stylesheet" href="lsh://kit/kit.css">
+<link rel="stylesheet" href="common.css">
+<style>
+  .day { margin: 14px 0 0; }
+  .day h2 { font-size: var(--text-base); margin: 0 0 4px; color: var(--ink-2); }
+  .day.today h2 { color: var(--accent-text); }
+  .post .cap { white-space: pre-wrap; color: var(--ink-2); font-size: var(--text-sm); margin-top: 4px; max-height: 4.5em; overflow: hidden; }
+  .post.done .title { text-decoration: line-through; color: var(--ink-3); }
+  .grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
+  @media (max-width: 560px) { .grid3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Контент-студия</p>
+  <h1>План публикаций</h1>
+  <p class="lead">Что и когда выходит. Подпись с хэштегами копируется одной кнопкой, вышедшее отмечается галочкой.</p>
+
+  <section class="surface card">
+    <form id="add">
+      <div class="grid3">
+        <input class="field" id="title" placeholder="Что публикуем" autocomplete="off" aria-label="Что публикуем">
+        <input class="field" id="date" type="date" aria-label="Дата">
+        <select class="field" id="platform" aria-label="Площадка"></select>
+      </div>
+      <textarea class="field" id="caption" rows="2" placeholder="Подпись (можно позже)" style="margin-top:8px" aria-label="Подпись"></textarea>
+      <div class="row" style="margin-top:8px"><button class="primary">Добавить в план</button></div>
+    </form>
+  </section>
+
+  <section class="surface card">
+    <div class="tabs" id="tabs"></div>
+    <div id="days"></div>
+    <p class="empty" id="empty">В плане пусто. Добавьте публикацию выше или нажмите «В план» в сценарии.</p>
+  </section>
+</main>
+<script src="common.js"></script>
+<script>
+  const { read, write, uid, el, toast, copy, open, PLATFORMS, fmtDate, today } = CS;
+  const $ = (id) => document.getElementById(id);
+  $('platform').append(...PLATFORMS.map((p) => el('option', { value: p, text: p })));
+  $('date').value = today();
+  let view = 'ahead';
+
+  const plan = () => read('plan', []);
+  const save = (l) => write('plan', l);
+
+  function setIdeaPosted(scriptId) {
+    const s = read('scripts', []).find((x) => x.id === scriptId);
+    if (!s?.ideaId) return;
+    const ideas = read('ideas', []);
+    const i = ideas.find((x) => x.id === s.ideaId);
+    if (i) { i.status = 'posted'; write('ideas', ideas); }
+  }
+
+  function update(id, patch) {
+    const l = plan(); const p = l.find((x) => x.id === id);
+    if (!p) return;
+    Object.assign(p, patch); save(l);
+    if (patch.status === 'posted' && p.scriptId) setIdeaPosted(p.scriptId);
+    render();
+  }
+
+  function postView(p) {
+    const date = el('input', { class: 'field', type: 'date', style: 'width:auto;height:28px', 'aria-label': 'Перенести на дату' });
+    date.value = p.date;
+    date.onchange = () => { if (date.value) update(p.id, { date: date.value }); };
+    const done = p.status === 'posted';
+    return el('li', { class: 'post' + (done ? ' done' : '') },
+      el('input', { type: 'checkbox', checked: done, 'aria-label': 'Вышло', style: 'margin-top:4px', onchange: (e) => update(p.id, { status: e.target.checked ? 'posted' : 'draft' }) }),
+      el('div', { class: 'body' },
+        el('div', { class: 'title', text: p.title || 'Без названия' }),
+        el('div', { style: 'margin-top:2px' }, el('span', { class: 'chip', text: p.platform })),
+        p.caption ? el('div', { class: 'cap', text: p.caption }) : null),
+      el('div', { class: 'row' }, date,
+        p.caption ? el('button', { class: 'quiet small', type: 'button', onclick: () => copy(p.caption) }, 'Копировать подпись') : null,
+        p.scriptId ? el('button', { class: 'quiet small', type: 'button', onclick: () => { write('current', { scriptId: p.scriptId }); open('video'); } }, 'Видео') : null,
+        el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Убрать из плана', onclick: () => { if (confirm('Убрать «' + (p.title || 'публикацию') + '» из плана?')) { save(plan().filter((x) => x.id !== p.id)); render(); } } }, '✕')));
+  }
+
+  function render() {
+    const all = plan();
+    const t = today();
+    const groups = { ahead: all.filter((p) => p.status !== 'posted' && p.date >= t), late: all.filter((p) => p.status !== 'posted' && p.date < t), posted: all.filter((p) => p.status === 'posted') };
+    const names = { ahead: 'Впереди', late: 'Просрочено', posted: 'Вышло' };
+    if (view === 'ahead' && !groups.ahead.length && groups.late.length) view = 'late';
+    $('tabs').replaceChildren(...Object.keys(names).map((k) => el('button', {
+      class: 'quiet small' + (view === k ? ' chip on' : ''), type: 'button', 'aria-pressed': String(view === k), onclick: () => { view = k; render(); },
+    }, `${names[k]} ${groups[k].length}`)));
+    const list = groups[view].slice().sort((a, b) => (view === 'posted' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)));
+    $('empty').hidden = list.length > 0;
+    $('empty').textContent = all.length ? 'Здесь пусто.' : 'В плане пусто. Добавьте публикацию выше или нажмите «В план» в сценарии.';
+    const byDay = new Map();
+    for (const p of list) (byDay.get(p.date) ?? byDay.set(p.date, []).get(p.date)).push(p);
+    $('days').replaceChildren(...[...byDay].map(([d, ps]) => el('div', { class: 'day' + (d === t ? ' today' : '') },
+      el('h2', { text: (d === t ? 'Сегодня, ' : '') + fmtDate(d) }), el('ul', { class: 'list' }, ps.map(postView)))));
+  }
+
+  $('add').onsubmit = (e) => {
+    e.preventDefault();
+    const title = $('title').value.trim();
+    if (!title) { $('title').focus(); toast('Напишите, что публикуем'); return; }
+    const l = plan();
+    l.push({ id: uid(), title, date: $('date').value || today(), platform: $('platform').value, caption: $('caption').value.trim(), status: 'draft' });
+    save(l);
+    $('title').value = ''; $('caption').value = '';
+    view = 'ahead'; render();
+  };
+
+  CS.onChange(render);
+  render();
+</script>
+</body>
+</html>

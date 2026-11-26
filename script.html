@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Сценарий</title>
+<link rel="stylesheet" href="lsh://kit/kit.css">
+<link rel="stylesheet" href="common.css">
+<style>
+  .scene { border-top: 1px solid var(--border); padding: 12px 0; }
+  .scene-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+  .sec { width: 70px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Контент-студия</p>
+  <h1>Сценарий</h1>
+  <p class="lead">Опишите тему, Claude напишет сценарий короткого ролика: зацепку, сцены с текстом на экране и закадром, подпись и хэштеги. Всё можно поправить руками.</p>
+
+  <section class="surface card">
+    <form id="brief">
+      <label class="l" for="topic">Тема ролика</label>
+      <input class="field" id="topic" placeholder="Например: как выбрать первую кофемолку" autocomplete="off">
+      <div class="grid2">
+        <div><label class="l" for="platform">Площадка</label><select class="field" id="platform"></select></div>
+        <div><label class="l" for="seconds">Длина</label>
+          <select class="field" id="seconds"><option value="15">15 секунд</option><option value="30" selected>30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option></select></div>
+        <div><label class="l" for="tone">Тон</label>
+          <select class="field" id="tone"><option>Живой и дружелюбный</option><option>Экспертный</option><option>С юмором</option><option>Вдохновляющий</option><option>Дерзкий</option></select></div>
+        <div><label class="l" for="audience">Для кого (можно пусто)</label><input class="field" id="audience" placeholder="новички, мамы в декрете, айтишники…" autocomplete="off"></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="primary" id="go">Написать с Claude</button>
+        <button class="quiet" type="button" id="blank">Пустой сценарий</button>
+      </div>
+    </form>
+    <div id="out"></div>
+  </section>
+
+  <section class="surface card" id="editor" hidden>
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0" id="ed-title">Сценарий</h2>
+      <span class="muted" id="ed-total"></span>
+    </div>
+    <label class="l" for="hook">Зацепка (первые 2 секунды)</label>
+    <input class="field" id="hook" autocomplete="off">
+    <div id="scenes"></div>
+    <button class="quiet small" type="button" id="add-scene">+ Сцена</button>
+    <label class="l" for="caption">Подпись к посту</label>
+    <textarea class="field" id="caption" rows="4"></textarea>
+    <label class="l" for="tags">Хэштеги</label>
+    <input class="field" id="tags" autocomplete="off" placeholder="#кофе #бариста">
+    <div class="row" style="margin-top:14px">
+      <button class="primary" type="button" id="to-video">Собрать видео →</button>
+      <button class="quiet" type="button" id="to-plan">В план</button>
+      <button class="quiet" type="button" id="copy-all">Скопировать текстом</button>
+      <button class="quiet" type="button" id="del">Удалить</button>
+    </div>
+    <p class="hint">Изменения сохраняются сами.</p>
+  </section>
+
+  <section class="surface card">
+    <h2>Мои сценарии</h2>
+    <ul class="list" id="list"></ul>
+    <p class="empty" id="empty">Сценариев пока нет. Возьмите идею во вкладке «Идеи» или впишите тему выше.</p>
+  </section>
+</main>
+<script src="common.js"></script>
+<script>
+  const { read, write, uid, el, toast, copy, open, ask, json, manualPanel, NoRail, PLATFORMS } = CS;
+  const $ = (id) => document.getElementById(id);
+  $('platform').append(...PLATFORMS.map((p) => el('option', { value: p, text: p })));
+
+  const scripts = () => read('scripts', []);
+  const saveScripts = (l) => write('scripts', l);
+  let cur = null; // the script being edited
+
+  function setIdeaStatus(ideaId, status) {
+    if (!ideaId) return;
+    const order = ['idea', 'script', 'video', 'planned', 'posted'];
+    const list = read('ideas', []);
+    const i = list.find((x) => x.id === ideaId);
+    if (i && order.indexOf(status) > order.indexOf(i.status)) { i.status = status; write('ideas', list); }
+  }
+
+  function persist() {
+    if (!cur) return;
+    cur.updated = new Date().toISOString();
+    const list = scripts();
+    const at = list.findIndex((s) => s.id === cur.id);
+    if (at >= 0) list[at] = cur; else list.unshift(cur);
+    saveScripts(list);
+    renderList();
+  }
+
+  const total = (s) => s.scenes.reduce((a, x) => a + (Number(x.seconds) || 0), 0);
+
+  function sceneView(sc, idx) {
+    const inp = (key, label, multi) => {
+      const f = el(multi ? 'textarea' : 'input', { class: 'field', rows: multi ? 2 : null, autocomplete: 'off', 'aria-label': label + ', сцена ' + (idx + 1) });
+      f.value = sc[key] ?? '';
+      f.oninput = () => { sc[key] = f.value; persist(); };
+      return el('div', {}, el('label', { class: 'l', text: label }), f);
+    };
+    const sec = el('input', { class: 'field sec', type: 'number', min: 1, max: 30, 'aria-label': 'Секунд, сцена ' + (idx + 1) });
+    sec.value = sc.seconds ?? 4;
+    sec.oninput = () => { sc.seconds = Math.max(1, Math.min(30, Number(sec.value) || 4)); persist(); $('ed-total').textContent = `всего ${total(cur)} сек`; };
+    const move = (d) => { const j = idx + d; if (j < 0 || j >= cur.scenes.length) return; [cur.scenes[idx], cur.scenes[j]] = [cur.scenes[j], cur.scenes[idx]]; persist(); renderEditor(); };
+    return el('div', { class: 'scene' },
+      el('div', { class: 'scene-head' }, el('strong', { text: `Сцена ${idx + 1}` }),
+        el('div', { class: 'row' }, sec, el('span', { class: 'muted', text: 'сек' }),
+          el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Выше', onclick: () => move(-1) }, '↑'),
+          el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Ниже', onclick: () => move(1) }, '↓'),
+          el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Удалить сцену', onclick: () => { cur.scenes.splice(idx, 1); persist(); renderEditor(); } }, '✕'))),
+      el('div', { class: 'grid2' }, inp('text', 'Текст на экране'), inp('visual', 'Что в кадре')),
+      inp('voice', 'Закадр / что говорить', true));
+  }
+
+  function renderEditor() {
+    $('editor').hidden = !cur;
+    if (!cur) return;
+    $('ed-title').textContent = cur.topic || 'Сценарий';
+    $('ed-total').textContent = `всего ${total(cur)} сек`;
+    for (const k of ['hook', 'caption']) $(k).value = cur[k] ?? '';
+    $('tags').value = (cur.hashtags ?? []).join(' ');
+    $('scenes').replaceChildren(...cur.scenes.map(sceneView));
+  }
+  $('hook').oninput = () => { cur.hook = $('hook').value; persist(); };
+  $('caption').oninput = () => { cur.caption = $('caption').value; persist(); };
+  $('tags').oninput = () => { cur.hashtags = $('tags').value.split(/[\s,]+/).filter(Boolean).map((t) => (t.startsWith('#') ? t : '#' + t)); persist(); };
+  $('add-scene').onclick = () => { cur.scenes.push({ text: '', voice: '', visual: '', seconds: 4 }); persist(); renderEditor(); };
+
+  function edit(s) { cur = s; renderEditor(); $('editor').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+
+  function renderList() {
+    const list = scripts();
+    $('empty').hidden = list.length > 0;
+    $('list').replaceChildren(...list.map((s) => el('li', {},
+      el('div', { class: 'body' }, el('div', { text: s.topic || 'Без темы' }),
+        el('div', { class: 'hint' }, `${s.platform} · ${s.scenes.length} сцен · ${total(s)} сек`)),
+      el('div', { class: 'row' },
+        el('button', { class: 'quiet small' + (cur?.id === s.id ? ' chip on' : ''), type: 'button', onclick: () => edit(s) }, cur?.id === s.id ? 'Открыт' : 'Открыть'),
+        el('button', { class: 'quiet small', type: 'button', onclick: () => { write('current', { scriptId: s.id }); open('video'); } }, 'Видео →')))));
+  }
+
+  function brief() {
+    return { topic: $('topic').value.trim(), platform: $('platform').value, seconds: Number($('seconds').value), tone: $('tone').value, audience: $('audience').value.trim() };
+  }
+
+  const SYSTEM = 'Ты сценарист коротких вертикальных роликов для соцсетей. Пишешь по-русски, коротко и цепко. Отвечай только JSON без пояснений.';
+  const promptFor = (b) => `Напиши сценарий ролика.
+Тема: ${b.topic}
+Площадка: ${b.platform}
+Длина: около ${b.seconds} секунд
+Тон: ${b.tone}${b.audience ? '\nАудитория: ' + b.audience : ''}
+
+Правила: зацепка в первые 2 секунды; 4..7 сцен; текст на экране не длиннее 7 слов; сумма секунд сцен примерно равна длине; в конце призыв (подписаться, сохранить, написать в комментариях).
+Ответ строго JSON:
+{"hook":"...","scenes":[{"text":"текст на экране","voice":"что говорить за кадром","visual":"что снять или показать","seconds":4}],"caption":"подпись к посту, 2..4 предложения","hashtags":["#...","#..."]}`;
+
+  function fromAnswer(b, text, ideaId) {
+    const j = json(text);
+    if (!j || !Array.isArray(j.scenes) || !j.scenes.length) {
+      $('out').replaceChildren(el('p', { class: 'note bad', text: 'Не получилось прочитать ответ Claude. Попробуйте ещё раз.' }));
+      return;
+    }
+    const s = {
+      id: uid(), ideaId: ideaId ?? null, topic: b.topic, platform: b.platform, tone: b.tone,
+      hook: String(j.hook ?? ''), caption: String(j.caption ?? ''),
+      hashtags: (Array.isArray(j.hashtags) ? j.hashtags : []).map(String).slice(0, 15),
+      scenes: j.scenes.slice(0, 12).map((x) => ({ text: String(x.text ?? ''), voice: String(x.voice ?? ''), visual: String(x.visual ?? ''), seconds: Math.max(1, Math.min(30, Number(x.seconds) || 4)) })),
+      created: new Date().toISOString(),
+    };
+    cur = s; persist(); setIdeaStatus(ideaId, 'script');
+    $('out').replaceChildren();
+    edit(s);
+    toast('Сценарий готов');
+  }
+
+  let ideaFor = null; // the idea this brief came from
+  $('brief').onsubmit = async (e) => {
+    e.preventDefault();
+    const b = brief();
+    if (!b.topic) { $('topic').focus(); toast('Сначала тема ролика'); return; }
+    const btn = $('go');
+    btn.disabled = true; btn.textContent = 'Claude пишет…';
+    $('out').replaceChildren(el('p', { class: 'hint', text: 'Обычно это 10..30 секунд.' }));
+    const idea = ideaFor;
+    try {
+      fromAnswer(b, await ask({ system: SYSTEM, prompt: promptFor(b), maxTokens: 2500 }), idea);
+    } catch (err) {
+      if (err instanceof NoRail) $('out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(b), (t) => fromAnswer(b, t, idea)));
+      else $('out').replaceChildren(el('p', { class: 'note bad', text: err.message || 'Claude не ответил. Попробуйте ещё раз.' }));
+    } finally { btn.disabled = false; btn.textContent = 'Написать с Claude'; }
+  };
+  $('blank').onclick = () => {
+    const b = brief();
+    cur = { id: uid(), ideaId: ideaFor, topic: b.topic || 'Новый ролик', platform: b.platform, tone: b.tone, hook: '', caption: '', hashtags: [], scenes: [{ text: '', voice: '', visual: '', seconds: 4 }], created: new Date().toISOString() };
+    persist(); setIdeaStatus(ideaFor, 'script'); edit(cur);
+  };
+
+  $('to-video').onclick = () => { write('current', { scriptId: cur.id }); open('video'); };
+  $('to-plan').onclick = () => {
+    const plan = read('plan', []);
+    if (plan.some((p) => p.scriptId === cur.id)) { toast('Уже в плане'); open('plan'); return; }
+    plan.push({ id: uid(), scriptId: cur.id, title: cur.topic, platform: cur.platform, date: CS.today(), caption: [cur.caption, (cur.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n'), status: 'draft' });
+    write('plan', plan); setIdeaStatus(cur.ideaId, 'planned');
+    toast('Добавлено в план на сегодня'); open('plan');
+  };
+  $('copy-all').onclick = () => copy([
+    cur.topic, '', 'Зацепка: ' + cur.hook, '',
+    ...cur.scenes.map((s, i) => `${i + 1}. [${s.seconds} сек] ${s.text}\n   В кадре: ${s.visual}\n   Закадр: ${s.voice}`), '',
+    cur.caption, '', (cur.hashtags ?? []).join(' ')].join('\n'));
+  $('del').onclick = () => {
+    if (!confirm('Удалить сценарий «' + cur.topic + '»?')) return;
+    saveScripts(scripts().filter((s) => s.id !== cur.id)); cur = null; renderEditor(); renderList();
+  };
+
+  // A handoff from another tool: an idea to write, or a script to open.
+  function takeCurrent() {
+    const c = read('current', null);
+    if (!c || c.seen === 'script') return;
+    write('current', { ...c, seen: 'script' });
+    if (c.scriptId) { const s = scripts().find((x) => x.id === c.scriptId); if (s) edit(s); return; }
+    const existing = c.ideaId && scripts().find((s) => s.ideaId === c.ideaId);
+    if (existing) { edit(existing); return; }
+    ideaFor = c.ideaId ?? null;
+    $('topic').value = c.topic ?? '';
+    if (c.platform) $('platform').value = c.platform;
+    $('topic').focus();
+  }
+
+  CS.onChange(() => { takeCurrent(); if (cur) { const fresh = scripts().find((s) => s.id === cur.id); if (!fresh) { cur = null; renderEditor(); } } renderList(); });
+  takeCurrent();
+  renderList();
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+/* Shared look of the Content studio tools, on top of the LogiShell kit. Colours only from kit variables. */
+body { min-height: 100vh; padding: 32px clamp(16px, 5vw, 56px) 64px; }
+main { max-width: 860px; }
+h1 { margin: 4px 0 6px; }
+h2 { font-size: var(--text-md); margin: 0 0 10px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; max-width: 62ch; }
+.card { padding: 16px 18px; margin: 0 0 16px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.grow { flex: 1 1 200px; min-width: 0; }
+.field, select.field, textarea.field {
+  height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-1); outline: none; width: 100%;
+}
+textarea.field { height: auto; min-height: 72px; padding: 8px 12px; resize: vertical; line-height: 1.45; }
+.field:focus, .field:focus-visible { border-color: var(--accent); }
+label.l { display: block; font-size: var(--text-sm); color: var(--ink-2); margin: 10px 0 4px; }
+.quiet {
+  border: 1px solid var(--border); background: transparent; border-radius: 8px; height: 32px; padding: 0 12px;
+  cursor: pointer; color: var(--ink-2); white-space: nowrap;
+}
+.quiet:hover { border-color: var(--border-strong); color: var(--ink); }
+.quiet.small { height: 26px; padding: 0 8px; font-size: var(--text-sm); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .55; cursor: default; }
+.muted { color: var(--ink-3); }
+.hint { color: var(--ink-3); font-size: var(--text-sm); margin: 6px 0 0; }
+.empty { color: var(--ink-2); margin: 8px 0 0; }
+.list { margin: 10px 0 0; padding: 0; list-style: none; }
+.list > li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.list > li .body { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.chip {
+  display: inline-block; font-size: var(--text-sm); padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--ink-2); margin-right: 4px;
+}
+.chip.on { border-color: var(--accent); color: var(--accent-text); }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+.note { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-2); color: var(--ink-2); margin: 10px 0 0; }
+.note.bad { border-color: var(--neg); }
+.note.good { border-color: var(--pos); }
+.mono { font-family: var(--font-mono); font-size: var(--text-sm); }
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px;
+  background: var(--surface); box-shadow: var(--glass-shadow); border: 1px solid var(--border); z-index: 10;
+}
+@media (max-width: 480px) { body { padding-top: 20px; } .card { padding: 14px; } }

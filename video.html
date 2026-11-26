@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Видео</title>
+<link rel="stylesheet" href="lsh://kit/kit.css">
+<link rel="stylesheet" href="common.css">
+<style>
+  main { max-width: 1040px; }
+  .studio { display: grid; grid-template-columns: minmax(220px, 340px) 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 720px) { .studio { grid-template-columns: 1fr; } }
+  .stage { position: sticky; top: 16px; }
+  canvas { width: 100%; aspect-ratio: 9 / 16; border-radius: 14px; display: block; background: var(--bg-2); box-shadow: var(--glass-shadow); }
+  @media (max-width: 720px) { .stage { position: static; max-width: 300px; margin: 0 auto; } }
+  .styles { display: flex; gap: 6px; flex-wrap: wrap; }
+  .check { display: flex; gap: 8px; align-items: center; margin: 8px 0 0; color: var(--ink-2); }
+  progress { width: 100%; accent-color: var(--accent); }
+  .file-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .file-row input[type=file] { max-width: 100%; color: var(--ink-2); font-size: var(--text-sm); }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Контент-студия</p>
+  <h1>Видео</h1>
+  <p class="lead">Собирает вертикальный ролик 1080×1920 из сцен сценария: крупный текст, субтитры, полоса прогресса, ваш фон и музыка. Файл скачивается и сразу идёт в Reels, TikTok или Shorts.</p>
+
+  <div id="none" class="surface card" hidden>
+    <p class="empty" style="margin:0 0 10px">Сначала нужен сценарий. Напишите его во вкладке «Сценарий», там же кнопка «Собрать видео».</p>
+    <button class="primary" type="button" id="go-script">Открыть «Сценарий»</button>
+  </div>
+
+  <div class="studio" id="studio" hidden>
+    <div class="stage">
+      <canvas id="cv" width="1080" height="1920" aria-label="Предпросмотр ролика"></canvas>
+      <div class="row" style="margin-top:10px">
+        <button class="quiet" type="button" id="play">▶ Смотреть</button>
+        <button class="primary" type="button" id="rec">Сохранить видео</button>
+      </div>
+      <div id="rec-state" hidden style="margin-top:8px">
+        <progress id="rec-bar" max="1" value="0"></progress>
+        <p class="hint" id="rec-text">Записываю в реальном времени. Не уходите с этой вкладки.</p>
+      </div>
+      <p class="hint" id="len"></p>
+    </div>
+
+    <div>
+      <section class="surface card">
+        <label class="l" for="pick">Сценарий</label>
+        <select class="field" id="pick"></select>
+        <label class="l">Стиль</label>
+        <div class="styles" id="styles" role="radiogroup" aria-label="Стиль"></div>
+        <label class="l" for="handle">Подпись внизу (ник или канал)</label>
+        <input class="field" id="handle" placeholder="@my_channel" autocomplete="off">
+        <label class="check"><input type="checkbox" id="subs" checked> Субтитры из закадра</label>
+        <label class="check"><input type="checkbox" id="hookcard" checked> Зацепка отдельным первым кадром</label>
+      </section>
+
+      <section class="surface card">
+        <h2>Фон и музыка</h2>
+        <label class="l" for="bg">Фото или видео на фон (необязательно)</label>
+        <div class="file-row"><input type="file" id="bg" accept="image/*,video/*"><button class="quiet small" type="button" id="bg-clear" hidden>Убрать</button></div>
+        <label class="l" for="music">Музыка (необязательно)</label>
+        <div class="file-row"><input type="file" id="music" accept="audio/*"><button class="quiet small" type="button" id="music-clear" hidden>Убрать</button></div>
+        <p class="hint">Файлы не уходят никуда: ролик собирается прямо в вашем браузере. Фон и музыку нужно выбрать заново после перезагрузки.</p>
+      </section>
+
+      <section class="surface card">
+        <h2>Сцены</h2>
+        <ol id="scene-list" class="hint" style="padding-left:18px;margin:0"></ol>
+        <div class="row" style="margin-top:10px"><button class="quiet small" type="button" id="edit-script">Править в «Сценарии»</button></div>
+      </section>
+      <div id="done"></div>
+    </div>
+  </div>
+</main>
+<script src="common.js"></script>
+<script>
+  const { read, write, el, toast, open } = CS;
+  const $ = (id) => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const W = 1080, H = 1920;
+
+  // Colours come from the kit: resolve each variable through a probe element into something canvas understands.
+  const probe = el('span', { style: 'display:none' }); document.body.append(probe);
+  const colour = (v) => { probe.style.color = `var(${v})`; return getComputedStyle(probe).color; };
+  const font = () => getComputedStyle(document.body).getPropertyValue('--font-sans').trim() || 'sans-serif';
+  const STYLES = {
+    accent: { title: 'Акцент', bg: ['--accent', '--accent-text'], ink: '--accent-ink', soft: '--accent-ink' },
+    clean: { title: 'Светлый', bg: ['--bg-1', '--bg-2'], ink: '--ink', soft: '--accent' },
+    night: { title: 'Контраст', bg: ['--ink', '--ink-2'], ink: '--bg-1', soft: '--accent' },
+  };
+  let palette = {};
+  function loadPalette() {
+    const s = STYLES[settings.style] ?? STYLES.accent;
+    palette = { a: colour(s.bg[0]), b: colour(s.bg[1]), ink: colour(s.ink), soft: colour(s.soft), accent: colour('--accent'), shade: colour('--ink') };
+  }
+
+  let settings = { style: 'accent', handle: '', subs: true, hookcard: true, ...read('videoSettings', {}) };
+  const saveSettings = () => write('videoSettings', settings);
+  let script = null, timeline = [], duration = 0;
+  let bgMedia = null; // { kind: 'image'|'video', node }
+  let music = null; // { buffer, name }
+
+  // ---- what is shown when -------------------------------------------------------------------------------------
+  function build() {
+    timeline = [];
+    if (!script) { duration = 0; return; }
+    if (settings.hookcard && script.hook?.trim()) timeline.push({ text: script.hook.trim(), voice: '', seconds: 2, hook: true });
+    for (const s of script.scenes) if ((s.text ?? '').trim() || (s.voice ?? '').trim()) timeline.push({ text: s.text ?? '', voice: s.voice ?? '', seconds: Math.max(1, Number(s.seconds) || 4) });
+    let t = 0;
+    for (const s of timeline) { s.start = t; t += s.seconds; }
+    duration = t;
+    $('len').textContent = duration ? `Длина ${Math.round(duration)} сек, ${timeline.length} кадров` : '';
+    $('scene-list').replaceChildren(...timeline.map((s) => el('li', { text: `${s.hook ? 'Зацепка: ' : ''}${s.text || '(без текста)'} · ${s.seconds} сек` })));
+  }
+
+  function wrap(text, maxW, size, weight = 800) {
+    ctx.font = `${weight} ${size}px ${font()}`;
+    const words = String(text).split(/\s+/).filter(Boolean);
+    const lines = []; let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+  /** The largest size at which the text fits the box. */
+  function fit(text, maxW, maxH, from, to, lh) {
+    for (let size = from; size >= to; size -= 4) {
+      const lines = wrap(text, maxW, size);
+      const widest = Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
+      if (lines.length * size * lh <= maxH && widest <= maxW) return { size, lines };
+    }
+    return { size: to, lines: wrap(text, maxW, to) };
+  }
+  const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+
+  function drawBackground(t) {
+    if (bgMedia) {
+      const n = bgMedia.node;
+      const iw = n.videoWidth || n.naturalWidth || W, ih = n.videoHeight || n.naturalHeight || H;
+      const k = Math.max(W / iw, H / ih) * (1 + 0.04 * Math.sin(t / 3)); // slow push in
+      const dw = iw * k, dh = ih * k;
+      ctx.drawImage(n, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      ctx.globalAlpha = 0.55;
+      g.addColorStop(0, palette.shade); g.addColorStop(0.5, 'transparent'); g.addColorStop(1, palette.shade);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      return { ink: colour('--bg-1') };
+    }
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, palette.a); g.addColorStop(1, palette.b);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // two soft moving lights
+    ctx.globalAlpha = 0.18;
+    for (const [i, r] of [[0, 520], [1, 380]]) {
+      const x = W * (0.3 + 0.4 * Math.sin(t * 0.35 + i * 2.1)), y = H * (0.3 + 0.35 * Math.cos(t * 0.27 + i * 1.3));
+      const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, palette.soft); rg.addColorStop(1, 'transparent');
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalAlpha = 1;
+    return { ink: palette.ink };
+  }
+
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    const { ink } = drawBackground(t);
+    if (!timeline.length) return;
+    const idx = Math.max(0, timeline.findIndex((s) => t >= s.start && t < s.start + s.seconds));
+    const s = timeline[idx === -1 ? timeline.length - 1 : idx];
+    const local = t - s.start, out = s.start + s.seconds - t;
+
+    // progress segments, like stories
+    const gap = 10, segW = (W - 80 - gap * (timeline.length - 1)) / timeline.length;
+    timeline.forEach((x, i) => {
+      const p = i < idx ? 1 : i > idx ? 0 : Math.min(1, local / x.seconds);
+      ctx.globalAlpha = 0.3; ctx.fillStyle = ink; ctx.fillRect(40 + i * (segW + gap), 60, segW, 8);
+      ctx.globalAlpha = 0.95; ctx.fillRect(40 + i * (segW + gap), 60, segW * p, 8);
+    });
+    ctx.globalAlpha = 1;
+
+    // the main text: words come in one after another
+    const fade = Math.min(1, out / 0.25);
+    const box = fit(s.text, W - 160, s.hook ? 900 : 760, s.hook ? 150 : 128, 56, 1.12);
+    const lh = box.size * 1.12;
+    const top = H * 0.42 - (box.lines.length * lh) / 2;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.font = `800 ${box.size}px ${font()}`;
+    let n = 0;
+    box.lines.forEach((line, li) => {
+      const words = line.split(' ');
+      const widths = words.map((w) => ctx.measureText(w + ' ').width);
+      let x = W / 2 - (ctx.measureText(line).width / 2);
+      words.forEach((w, wi) => {
+        const p = ease((local - n * 0.09) / 0.35); n++;
+        ctx.globalAlpha = p * fade;
+        ctx.fillStyle = ink;
+        ctx.textAlign = 'left';
+        ctx.fillText(w, x, top + li * lh + (1 - p) * 40);
+        x += widths[wi];
+      });
+    });
+    ctx.globalAlpha = 1;
+
+    // subtitles from the voice-over
+    if (settings.subs && s.voice.trim()) {
+      const sub = fit(s.voice.trim(), W - 200, 320, 52, 36, 1.3);
+      const sh = sub.lines.length * sub.size * 1.3 + 40;
+      const y = H - 360 - sh;
+      ctx.globalAlpha = 0.6 * fade; ctx.fillStyle = palette.shade;
+      roundRect(80, y, W - 160, sh, 24); ctx.fill();
+      ctx.globalAlpha = fade; ctx.fillStyle = colour('--bg-1');
+      ctx.font = `600 ${sub.size}px ${font()}`; ctx.textAlign = 'center';
+      sub.lines.forEach((l, i) => ctx.fillText(l, W / 2, y + 20 + i * sub.size * 1.3));
+      ctx.globalAlpha = 1;
+    }
+
+    if (settings.handle.trim()) {
+      ctx.font = `600 44px ${font()}`; ctx.textAlign = 'center'; ctx.fillStyle = ink; ctx.globalAlpha = 0.85;
+      ctx.fillText(settings.handle.trim(), W / 2, H - 200);
+      ctx.globalAlpha = 1;
+    }
+  }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  // ---- playing and recording -------------------------------------------------------------------------------------
+  let playing = null; // { start, raf, timer, stop }
+  let audio = null; // { ctx, src, dest }
+
+  function startMusic(toDest) {
+    if (!music) return null;
+    const ac = new AudioContext();
+    const src = ac.createBufferSource(); src.buffer = music.buffer;
+    const gain = ac.createGain(); gain.gain.value = 0.9;
+    src.connect(gain); gain.connect(ac.destination);
+    let dest = null;
+    if (toDest) { dest = ac.createMediaStreamDestination(); gain.connect(dest); }
+    // fade out in the last second
+    gain.gain.setValueAtTime(0.9, ac.currentTime + Math.max(0, duration - 1));
+    gain.gain.linearRampToValueAtTime(0, ac.currentTime + duration);
+    src.start();
+    return { ac, src, dest };
+  }
+
+  function stop() {
+    if (!playing) return;
+    cancelAnimationFrame(playing.raf); clearInterval(playing.timer);
+    if (audio) { try { audio.src.stop(); audio.ac.close(); } catch {} audio = null; }
+    if (bgMedia?.kind === 'video') bgMedia.node.pause();
+    const p = playing; playing = null;
+    p.onEnd?.();
+    $('play').textContent = '▶ Смотреть';
+    draw(Math.min(duration, 0.9));
+  }
+
+  function play({ record = false, onEnd, onTick } = {}) {
+    if (!duration) { toast('В сценарии нет сцен с текстом'); return null; }
+    stop();
+    audio = startMusic(record);
+    if (bgMedia?.kind === 'video') { bgMedia.node.currentTime = 0; bgMedia.node.play().catch(() => {}); }
+    const start = performance.now();
+    playing = { onEnd };
+    const frame = () => {
+      if (!playing) return;
+      const t = (performance.now() - start) / 1000;
+      if (t >= duration) { draw(duration - 0.001); stop(); return; }
+      draw(t); onTick?.(t / duration);
+    };
+    const loop = () => { frame(); if (playing) playing.raf = requestAnimationFrame(loop); };
+    playing.raf = requestAnimationFrame(loop);
+    playing.timer = setInterval(frame, 1000 / 30); // keeps drawing when the browser slows animation frames down
+    $('play').textContent = '■ Стоп';
+    return audio;
+  }
+
+  $('play').onclick = () => (playing ? stop() : play());
+
+  function pickType() {
+    const list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    return list.find((t) => window.MediaRecorder?.isTypeSupported?.(t)) ?? '';
+  }
+
+  $('rec').onclick = async () => {
+    if (!window.MediaRecorder || !cv.captureStream) { $('done').replaceChildren(el('p', { class: 'note bad', text: 'Этот браузер не умеет сохранять видео. Откройте shell в Chrome, Edge или Safari 17+.' })); return; }
+    if (!duration) { toast('В сценарии нет сцен с текстом'); return; }
+    await document.fonts?.ready;
+    const type = pickType();
+    const stream = cv.captureStream(30);
+    const chunks = [];
+    $('rec').disabled = true; $('play').disabled = true;
+    $('rec-state').hidden = false; $('rec-bar').value = 0;
+    $('done').replaceChildren();
+    let rec;
+    const a = play({
+      record: true,
+      onTick: (p) => { $('rec-bar').value = p; },
+      onEnd: () => { setTimeout(() => { try { rec.state !== 'inactive' && rec.stop(); } catch {} }, 150); },
+    });
+    if (a?.dest) for (const tr of a.dest.stream.getAudioTracks()) stream.addTrack(tr);
+    try { rec = new MediaRecorder(stream, { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 8_000_000 }); }
+    catch { rec = new MediaRecorder(stream); }
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      $('rec').disabled = false; $('play').disabled = false; $('rec-state').hidden = true;
+      const mime = rec.mimeType || type || 'video/webm';
+      const blob = new Blob(chunks, { type: mime });
+      if (!blob.size) { $('done').replaceChildren(el('p', { class: 'note bad', text: 'Видео не записалось. Попробуйте ещё раз и не переключайте вкладку во время записи.' })); return; }
+      const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+      const name = (script.topic || 'video').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) + '.' + ext;
+      const url = URL.createObjectURL(blob);
+      const link = el('a', { class: 'primary', href: url, download: name, style: 'display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:8px;text-decoration:none;background:var(--accent);color:var(--accent-ink);font-weight:600' }, 'Скачать ' + name);
+      const note = ext === 'webm' ? 'Файл в формате WebM: TikTok и YouTube его принимают; для Instagram сохраните в Chrome или Safari, там будет MP4.' : 'Файл MP4, подходит для Reels, TikTok и Shorts.';
+      $('done').replaceChildren(el('section', { class: 'surface card' }, el('h2', { text: 'Готово' }),
+        el('video', { src: url, controls: true, playsInline: true, style: 'width:100%;max-width:260px;border-radius:10px;display:block;margin:0 0 10px' }),
+        link, el('p', { class: 'hint', text: `${(blob.size / 1048576).toFixed(1)} МБ. ${note}` })));
+      link.click();
+      markVideo();
+    };
+    rec.start(250);
+  };
+
+  function markVideo() {
+    if (!script?.ideaId) return;
+    const list = read('ideas', []);
+    const i = list.find((x) => x.id === script.ideaId);
+    if (i && (i.status === 'idea' || i.status === 'script')) { i.status = 'video'; write('ideas', list); }
+  }
+
+  // ---- inputs --------------------------------------------------------------------------------------------------
+  $('bg').onchange = () => {
+    const f = $('bg').files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    if (f.type.startsWith('video/')) {
+      const v = el('video', { muted: true, loop: true, playsInline: true }); v.muted = true; v.src = url;
+      v.onloadeddata = () => { bgMedia = { kind: 'video', node: v }; draw(0.9); };
+      v.onerror = () => toast('Это видео браузер не открыл');
+    } else {
+      const img = new Image();
+      img.onload = () => { bgMedia = { kind: 'image', node: img }; draw(0.9); };
+      img.onerror = () => toast('Эту картинку браузер не открыл');
+      img.src = url;
+    }
+    $('bg-clear').hidden = false;
+  };
+  $('bg-clear').onclick = () => { bgMedia = null; $('bg').value = ''; $('bg-clear').hidden = true; draw(0.9); };
+  $('music').onchange = async () => {
+    const f = $('music').files[0];
+    if (!f) return;
+    try {
+      const ac = new AudioContext();
+      music = { buffer: await ac.decodeAudioData(await f.arrayBuffer()), name: f.name };
+      ac.close();
+      $('music-clear').hidden = false;
+      toast('Музыка добавлена');
+    } catch { music = null; toast('Этот звук браузер не открыл, попробуйте MP3'); }
+  };
+  $('music-clear').onclick = () => { music = null; $('music').value = ''; $('music-clear').hidden = true; };
+
+  $('styles').replaceChildren(...Object.entries(STYLES).map(([k, s]) => el('button', {
+    class: 'quiet small' + (settings.style === k ? ' chip on' : ''), type: 'button', role: 'radio', 'aria-checked': String(settings.style === k),
+    onclick: () => { settings.style = k; saveSettings(); loadPalette(); renderStyles(); draw(0.9); },
+  }, s.title)));
+  function renderStyles() { [...$('styles').children].forEach((b, i) => { const on = Object.keys(STYLES)[i] === settings.style; b.className = 'quiet small' + (on ? ' chip on' : ''); b.ariaChecked = String(on); }); }
+  $('handle').value = settings.handle;
+  $('handle').oninput = () => { settings.handle = $('handle').value; saveSettings(); draw(0.9); };
+  $('subs').checked = settings.subs; $('subs').onchange = () => { settings.subs = $('subs').checked; saveSettings(); draw(0.9); };
+  $('hookcard').checked = settings.hookcard; $('hookcard').onchange = () => { settings.hookcard = $('hookcard').checked; saveSettings(); build(); draw(0.9); };
+  $('go-script').onclick = () => open('script');
+  $('edit-script').onclick = () => { if (script) write('current', { scriptId: script.id }); open('script'); };
+  $('pick').onchange = () => choose($('pick').value);
+
+  function choose(id) {
+    const list = read('scripts', []);
+    script = list.find((s) => s.id === id) ?? list[0] ?? null;
+    if (script) write('videoLast', script.id);
+    stop(); build(); draw(0.9);
+  }
+
+  function refresh() {
+    const list = read('scripts', []);
+    $('none').hidden = list.length > 0;
+    $('studio').hidden = list.length === 0;
+    if (!list.length) return;
+    const c = read('current', null);
+    let want = script?.id ?? read('videoLast', null);
+    if (c?.scriptId && c.seen !== 'video') { want = c.scriptId; write('current', { ...c, seen: 'video' }); }
+    $('pick').replaceChildren(...list.map((s) => el('option', { value: s.id, text: s.topic || 'Без темы' })));
+    if (!list.some((s) => s.id === want)) want = list[0].id;
+    $('pick').value = want;
+    if (!playing) choose(want);
+  }
+
+  loadPalette();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { loadPalette(); draw(0.9); });
+  (document.fonts?.ready ?? Promise.resolve()).then(() => draw(0.9));
+  CS.onChange(refresh);
+  refresh();
+</script>
+</body>
+</html>

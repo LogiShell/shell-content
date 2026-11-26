@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Идеи</title>
+<link rel="stylesheet" href="lsh://kit/kit.css">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<main>
+  <p class="eyebrow">Контент-студия</p>
+  <h1>Идеи</h1>
+  <p class="lead">Записывайте идеи для роликов и постов. Из любой идеи одним нажатием получается сценарий.</p>
+
+  <section class="surface card">
+    <form id="add">
+      <div class="row">
+        <input class="field grow" id="text" placeholder="Например: 3 ошибки новичка в 3D печати" autocomplete="off" aria-label="Идея">
+        <select class="field" id="platform" style="width:auto" aria-label="Площадка"></select>
+        <button class="primary">Добавить</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="surface card">
+    <h2>Придумать с Claude</h2>
+    <form id="gen">
+      <div class="row">
+        <input class="field grow" id="niche" placeholder="О чём ваш блог? Например: домашняя кофейня, бариста-любитель" autocomplete="off" aria-label="Тема блога">
+        <button class="quiet" id="gen-btn">Придумать 8 идей</button>
+      </div>
+    </form>
+    <div id="gen-out"></div>
+  </section>
+
+  <section class="surface card">
+    <div class="tabs" id="filters" role="toolbar" aria-label="Фильтр"></div>
+    <ul class="list" id="list"></ul>
+    <p class="empty" id="empty">Идей пока нет. Впишите первую выше или попросите Claude придумать несколько.</p>
+  </section>
+</main>
+<script src="common.js"></script>
+<script>
+  const { read, write, uid, el, toast, open, ask, json, manualPanel, NoRail, PLATFORMS } = CS;
+  const STATUS = { idea: 'Идея', script: 'Есть сценарий', video: 'Есть видео', planned: 'В плане', posted: 'Вышло' };
+  let filter = 'all';
+
+  const $ = (id) => document.getElementById(id);
+  $('platform').append(...PLATFORMS.map((p) => el('option', { value: p, text: p })));
+  $('platform').value = read('lastPlatform', 'Reels');
+
+  const ideas = () => read('ideas', []);
+  const saveIdeas = (list) => write('ideas', list);
+
+  function addIdea(text, platform) {
+    const list = ideas();
+    list.unshift({ id: uid(), text, platform, status: 'idea', created: new Date().toISOString() });
+    saveIdeas(list);
+  }
+
+  function toScript(idea) {
+    write('current', { ideaId: idea.id, topic: idea.text, platform: idea.platform });
+    open('script');
+  }
+
+  function render() {
+    const list = ideas();
+    const counts = { all: list.length };
+    for (const i of list) counts[i.status] = (counts[i.status] ?? 0) + 1;
+    $('filters').replaceChildren(...[['all', 'Все'], ...Object.entries(STATUS)].map(([k, t]) =>
+      el('button', { class: 'quiet small' + (filter === k ? ' chip on' : ''), type: 'button', 'aria-pressed': String(filter === k), onclick: () => { filter = k; render(); } },
+        `${t} ${counts[k] ?? 0}`)));
+    const shown = list.filter((i) => filter === 'all' || i.status === filter);
+    $('empty').hidden = shown.length > 0;
+    if (list.length && !shown.length) $('empty').textContent = 'В этом разделе пусто.';
+    else $('empty').textContent = 'Идей пока нет. Впишите первую выше или попросите Claude придумать несколько.';
+    $('list').replaceChildren(...shown.map((i) => el('li', {},
+      el('div', { class: 'body' },
+        el('div', { text: i.text }),
+        el('div', { style: 'margin-top:4px' }, el('span', { class: 'chip', text: i.platform }), el('span', { class: 'chip' + (i.status !== 'idea' ? ' on' : ''), text: STATUS[i.status] ?? i.status }))),
+      el('div', { class: 'row' },
+        el('button', { class: 'quiet small', type: 'button', onclick: () => toScript(i) }, i.status === 'idea' ? 'В сценарий →' : 'Открыть сценарий'),
+        el('button', { class: 'quiet small', type: 'button', 'aria-label': 'Удалить идею', onclick: () => {
+          if (!confirm('Удалить идею «' + i.text + '»?')) return;
+          saveIdeas(ideas().filter((x) => x.id !== i.id)); render();
+        } }, 'Удалить')))));
+  }
+
+  $('add').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('text').value.trim();
+    if (!text) { $('text').focus(); return; }
+    write('lastPlatform', $('platform').value);
+    addIdea(text, $('platform').value);
+    $('text').value = '';
+    render();
+  };
+
+  const SYSTEM = 'Ты помогаешь автору коротких вертикальных роликов для соцсетей. Отвечай только JSON без пояснений.';
+  const promptFor = (niche) => `Тема блога: ${niche}\nПридумай 8 идей коротких роликов (до 60 секунд) с сильной зацепкой в первые 2 секунды. Разные форматы: ошибки, лайфхак, до/после, миф, история, подборка, разбор, челлендж.\nОтвет строго JSON: {"ideas":[{"text":"идея одной фразой","platform":"Reels|TikTok|Shorts"}]}`;
+
+  function takeIdeas(text) {
+    const j = json(text);
+    const got = Array.isArray(j) ? j : j?.ideas;
+    if (!Array.isArray(got) || !got.length) { $('gen-out').replaceChildren(el('p', { class: 'note bad', text: 'Не получилось прочитать ответ. Попробуйте ещё раз.' })); return; }
+    const list = ideas();
+    for (const g of got.slice(0, 12).reverse()) {
+      const t = String(g.text ?? g).trim();
+      if (t) list.unshift({ id: uid(), text: t, platform: PLATFORMS.includes(g.platform) ? g.platform : $('platform').value, status: 'idea', created: new Date().toISOString() });
+    }
+    saveIdeas(list);
+    $('gen-out').replaceChildren(el('p', { class: 'note good', text: `Добавлено идей: ${got.length}. Они вверху списка.` }));
+    filter = 'all';
+    render();
+  }
+
+  $('gen').onsubmit = async (e) => {
+    e.preventDefault();
+    const niche = $('niche').value.trim();
+    if (!niche) { $('niche').focus(); toast('Сначала напишите, о чём блог'); return; }
+    write('niche', niche);
+    const btn = $('gen-btn');
+    btn.disabled = true; btn.textContent = 'Claude думает…';
+    $('gen-out').replaceChildren();
+    try {
+      takeIdeas(await ask({ system: SYSTEM, prompt: promptFor(niche), maxTokens: 1500 }));
+    } catch (err) {
+      if (err instanceof NoRail) $('gen-out').replaceChildren(manualPanel(SYSTEM + '\n\n' + promptFor(niche), takeIdeas));
+      else $('gen-out').replaceChildren(el('p', { class: 'note bad', text: err.message || 'Claude не ответил. Попробуйте ещё раз.' }));
+    } finally {
+      btn.disabled = false; btn.textContent = 'Придумать 8 идей';
+    }
+  };
+
+  $('niche').value = read('niche', '');
+  CS.onChange(render);
+  render();
+</script>
+</body>
+</html>
