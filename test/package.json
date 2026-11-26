@@ -1,0 +1,12 @@
+{
+  "name": "content-studio-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End to end tests of the Content studio shell inside the real LogiShell frame (local preview).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}
