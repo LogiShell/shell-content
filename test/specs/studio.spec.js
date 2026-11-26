@@ -60,7 +60,7 @@ test('3. without Claude the manual panel takes a pasted answer, and Видео g
   await expect(page.locator('iframe[title="Видео"]')).toBeVisible();
   await expect(video.locator('#studio')).toBeVisible();
   await expect(video.locator('#pick option:checked')).toHaveText(topic);
-  await expect(video.locator('#len')).toHaveText(`Длина ${ANSWER_SECONDS} сек, ${ANSWER.scenes.length + 1} кадров`);
+  await expect(video.locator('#len')).toHaveText(`${ANSWER_SECONDS} сек, ${ANSWER.scenes.length + 1} кадров, 1080×1920`);
   await expect(video.locator('#scene-list li')).toHaveCount(ANSWER.scenes.length + 1);
   await expect(video.locator('#scene-list')).toContainText(ANSWER.scenes[2].text);
   expect(problems).toEqual([]);
@@ -72,7 +72,7 @@ test('4. Видео records a real vertical file of the right length', async ({ 
   const script = await writeScript(page, 'Кофемолка за минуту');
   await script.getByRole('button', { name: 'Собрать видео →' }).click();
   const video = page.frameLocator('iframe[title="Видео"]');
-  await expect(video.locator('#len')).toHaveText(new RegExp(`^Длина ${ANSWER_SECONDS} сек`));
+  await expect(video.locator('#len')).toHaveText(new RegExp(`^${ANSWER_SECONDS} сек, .*1080×1920$`));
 
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: (ANSWER_SECONDS + 30) * 1000 }),
@@ -85,7 +85,7 @@ test('4. Видео records a real vertical file of the right length', async ({ 
   const webm = bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
   const mp4 = bytes.subarray(4, 8).toString('latin1') === 'ftyp';
   expect(webm || mp4, `not MP4 or WebM: ${download.suggestedFilename()}`).toBe(true);
-  expect(download.suggestedFilename()).toMatch(mp4 ? /\.mp4$/ : /\.webm$/);
+  expect(download.suggestedFilename()).toMatch(mp4 ? /-9x16\.mp4$/ : /-9x16\.webm$/);
   expect(bytes.length).toBeGreaterThan(100 * 1024);
 
   // Play the file back in a <video> of the page: real dimensions and length.
@@ -111,6 +111,14 @@ test('4. Видео records a real vertical file of the right length', async ({ 
   expect(meta.height).toBe(1920);
   expect(Math.abs(meta.duration - ANSWER_SECONDS)).toBeLessThanOrEqual(1);
   await expect(video.locator('#done')).toContainText('Готово');
+
+  // The cover: a PNG of the first frame in the same size.
+  const [cover] = await Promise.all([page.waitForEvent('download'), video.getByRole('button', { name: 'Обложка' }).click()]);
+  expect(cover.suggestedFilename()).toMatch(/-9x16-cover\.png$/);
+  const png = await readFile(await cover.path());
+  expect(png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1080, 1920]);
+  expect(png.length).toBeGreaterThan(10 * 1024);
   expect(problems).toEqual([]);
 });
 
